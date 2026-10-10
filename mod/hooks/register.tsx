@@ -155,12 +155,12 @@ async function feedInstructions($: $, n: number, stdout: string, feedFrames: str
     size += bytes
   }
   const writes = batches.filter(b => b.length).map(b => b.map(p => `frames/${fileName(p)} <- ${p}`).join(', '))
-  out.push(`${uploads.length ? 2 : 1}. One ArtifactData batch (set; file_path where a file is named):`)
-  if (frameset) out.push(`   framesets/s${n} <- ${frameset}  (this step's ${feedFrames.length} live frames, packed in the uploaded frames_s${String(n).padStart(2, '0')} file)`)
+  out.push(`${uploads.length ? 2 : 1}. One ArtifactData batch (set; file_path where a file is named; doc ids start with the run id, e.g. <run>_s${n}, so earlier models never clash):`)
+  if (frameset) out.push(`   framesets/<run>_s${n} <- ${frameset}  (this step's ${feedFrames.length} live frames, packed in the uploaded frames_s${String(n).padStart(2, '0')} file)`)
   else writes.forEach((w, k) => out.push(`   frames batch ${k + 1}: ${w}`))
-  if (gltf) out.push(`   also: gltf/s${n} <- ${gltf}`)
-  if (sky) out.push(`   also: sky/s${n} <- ${sky}`)
-  if (render) out.push(`   also: renders/s${n} = {run, step: ${n}, url: <uploaded url of ${render[1]}>, samples, size, time} (${render[2]!.split('\t').join(', ')})`)
+  if (gltf) out.push(`   also: gltf/<run>_s${n} <- ${gltf}`)
+  if (sky) out.push(`   also: sky/<run>_s${n} <- ${sky}`)
+  if (render) out.push(`   also: renders/<run>_s${n} = {run, step: ${n}, url: <uploaded url of ${render[1]}>, samples, size, time} (${render[2]!.split('\t').join(', ')})`)
   out.push('   and one chat/mNNNN note {seq, at, text} saying what you built.')
   if (baked) out.push(`Baked textures: ${baked}`)
   if (warns.length) out.push(`Warnings: ${warns.join(' | ')}`)

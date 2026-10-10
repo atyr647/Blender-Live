@@ -17,8 +17,8 @@ Every `blender_step` result ends with "Send to the feed now": do it right away, 
 1. **Upload** the listed files with the Artifact tool: `url` = the feed, `asset: true`, `file_paths` (up to 25 per call). They are `.js` packs (frames, glTF, sky) and Cycles `.png` renders.
 2. **One ArtifactData batch** with:
    - `files/<key with / as _>` = `{run, key, urls: [...]}` for every uploaded `.js` key (the key is inside the file: `window.BLD["<key>/<part>"]`; a key with several parts lists their urls in order);
-   - `framesets/s<step>`, `gltf/s<step>`, `sky/s<step>` from the files the result names (`file_path`);
-   - `renders/s<step>` = `{run, step, url, samples, size, time}` when there is a render;
+   - `framesets/<run>_s<step>`, `gltf/<run>_s<step>`, `sky/<run>_s<step>` from the files the result names (`file_path`); doc ids start with the run id so an earlier model's docs never clash;
+   - `renders/<run>_s<step>` = `{run, step, url, samples, size, time}` when there is a render;
    - one `chat/mNNNN` note `{seq, at, text}`, continuing `seq` from the highest one there.
 
 After `blender_reset`, read the new run id from `<workspace>/run.txt` and `set` `live/status` = `{run}` (pin `if_version` to the version you read). The page clears and plays the new run from its first frame.
