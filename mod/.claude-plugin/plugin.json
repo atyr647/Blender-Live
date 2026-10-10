@@ -1,0 +1,9 @@
+{
+  "name": "blender-live",
+  "version": "0.1.0",
+  "description": "Watch Claude model in Blender: a live 3D view that updates with every line of modeling code",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "atyr647"
+  }
+}

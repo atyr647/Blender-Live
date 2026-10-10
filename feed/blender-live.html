@@ -1,0 +1,604 @@
+<title>Blender Live Feed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: one screen, a studio monitor. The 3D view fills it; status on top, ticker + console at the bottom,
+     the chat feed and the notes list slide in from the right (bottom sheets on phones). */
+  :root {
+    --void: #0c0e13;        /* monitor glass */
+    --panel: #161a22;       /* bars and sheets over the view */
+    --ink: #e7ebf3;         /* main text */
+    --dim: #8a93a6;         /* secondary text */
+    --live: #ff4757;        /* on-air red */
+    --signal: #7dffa6;      /* code ticker green, like a dev-kit terminal */
+    --gold: #ffd84a;        /* new geometry glow, active controls */
+    --note: #6cc4ff;        /* the viewer's own note pins */
+    --line: #2a3140;
+    --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  [hidden] { display: none !important; }
+  body { background: var(--void); color: var(--ink); font-family: var(--display); overflow: hidden; }
+  .app { position: relative; height: 100%; display: grid; grid-template-rows: auto 1fr auto; }
+  #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .app.is-noting #view { cursor: crosshair; }
+
+  .top, .bottom { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 12px; padding-inline: 16px; }
+  .top { background: linear-gradient(var(--void), transparent); }
+  .bottom { grid-row: 3; flex-direction: column; align-items: stretch; gap: 10px; background: linear-gradient(transparent, var(--void) 35%); }
+
+  .onair { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); font-weight: 700; font-size: 13px; letter-spacing: .14em; color: var(--dim); }
+  .onair .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+  .onair.is-live { color: var(--live); border-color: color-mix(in srgb, var(--live) 45%, var(--line)); }
+  .onair.is-live .dot { background: var(--live); animation: pulse 1s steps(2, start) infinite; }
+  .onair.is-paused { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
+  .onair.is-paused .dot { background: var(--gold); border-radius: 1px; }
+  @keyframes pulse { to { visibility: hidden; } }
+
+  .what { min-width: 0; flex: 1 1 200px; display: grid; gap: 2px; }
+  .eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  .what .label { font-size: 20px; font-weight: 700; line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; }
+  .meters { display: flex; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .meters b { color: var(--ink); font-weight: 500; }
+
+  .ticker { min-width: 0; font-family: var(--mono); font-size: 13px; color: var(--signal); background: color-mix(in srgb, var(--void) 75%, transparent); border-left: 2px solid var(--signal); padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ticker:empty::before { content: "\203A  waiting for code"; color: var(--dim); }
+  .ticker .line { color: var(--dim); margin-right: 8px; }
+
+  /* the console: three labelled groups that wrap on narrow screens */
+  .console { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .group > .eyebrow { margin-right: 2px; }
+  button { font: 500 13px var(--display); letter-spacing: .04em; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 7px 11px; cursor: pointer; position: relative; }
+  button:hover:not(:disabled) { border-color: var(--dim); }
+  button:disabled { color: var(--dim); opacity: .55; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); }
+  button.primary { border-color: color-mix(in srgb, var(--live) 60%, var(--line)); }
+  button .unread { position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--live); }
+  .speed { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .speed input { width: 96px; accent-color: var(--gold); }
+
+  /* side sheets: chat feed and notes */
+  .sheet { position: absolute; z-index: 3; top: 76px; right: 16px; bottom: 150px; width: min(340px, calc(100% - 32px)); display: flex; flex-direction: column; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .sheet header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .sheet header h2 { margin: 0; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; }
+  .sheet .body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { display: grid; gap: 3px; }
+  .msg .who { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+  .msg .who time { color: var(--dim); letter-spacing: 0; text-transform: none; font-family: var(--mono); margin-left: 6px; }
+  .msg p { margin: 0; font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+  .hint { color: var(--dim); font-size: 13px; line-height: 1.45; margin: 0; }
+  .note { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+  .note .head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .note .pin { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--note); color: var(--void); font: 700 12px var(--mono); }
+  .note .name { flex: 1; min-width: 0; font-family: var(--mono); overflow-wrap: anywhere; }
+  .note textarea { width: 100%; box-sizing: border-box; min-height: 56px; resize: vertical; font: 14px/1.4 var(--display); color: var(--ink); background: var(--void); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; }
+  .sheet footer { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .sheet footer .status { flex: 1; min-width: 0; color: var(--dim); font-size: 12px; }
+  .x { padding: 3px 8px; }
+
+  .empty { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; padding-inline: 16px; pointer-events: none; text-align: center; }
+  .empty p { max-width: 34ch; color: var(--dim); font-size: 15px; line-height: 1.5; }
+  .empty strong { display: block; color: var(--ink); font-size: 18px; margin-bottom: 6px; }
+  .empty code { font-family: var(--mono); color: var(--signal); font-size: 13px; }
+
+  .labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+  .labels span { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--note); color: var(--void); font: 700 12px var(--mono); box-shadow: 0 0 0 2px var(--void); }
+
+  @media (max-width: 640px) {
+    .sheet { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; border-radius: 10px 10px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+    .speed input { width: 72px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .onair.is-live .dot { animation: none; } }
+</style>
+
+<div class="app" id="app">
+  <canvas id="view" aria-label="Live 3D view of the model Claude is building"></canvas>
+  <div class="labels" id="labels" aria-hidden="true"></div>
+
+  <header class="top">
+    <span class="onair" id="onair"><span class="dot"></span><span id="onair-text">OFF AIR</span></span>
+    <div class="what">
+      <span class="eyebrow">Claude is modeling</span>
+      <span class="label" id="label">Nothing yet</span>
+    </div>
+    <div class="meters">
+      <span><b id="tris">0</b> tris</span>
+      <span>frame <b id="frame">0</b>/<b id="frames">0</b></span>
+    </div>
+  </header>
+
+  <div class="empty" id="empty">
+    <p><strong>Waiting for the first frame</strong>Ask Claude in chat to build something, for example <code>build an N64 star in Blender Live</code>. Every line of its Blender code shows up here as it runs.</p>
+  </div>
+
+  <aside class="sheet" id="chat" hidden aria-label="Claude's messages">
+    <header><h2>Claude says</h2><button class="x" id="chat-close" type="button" aria-label="Close chat feed">Close</button></header>
+    <div class="body" id="chat-body" aria-live="polite"><p class="hint">Claude's notes about what it's building show up here.</p></div>
+  </aside>
+
+  <aside class="sheet" id="notes" hidden aria-label="Your notes on the model">
+    <header><h2>Your notes</h2><button class="x" id="notes-close" type="button">Done</button></header>
+    <div class="body" id="notes-body"></div>
+    <footer><span class="status" id="notes-status">Click parts of the model to add notes.</span><button class="primary" id="submit" type="button" disabled>Submit to Claude</button></footer>
+  </aside>
+
+  <footer class="bottom">
+    <div class="ticker" id="ticker"></div>
+    <div class="console">
+      <div class="group" role="group" aria-label="Playback">
+        <span class="eyebrow">Play</span>
+        <button id="pause" type="button" aria-pressed="false">Pause</button>
+        <button id="replay" class="primary" type="button">Replay build</button>
+        <button id="latest" type="button">Latest</button>
+      </div>
+      <div class="group" role="group" aria-label="Turntable">
+        <span class="eyebrow">Spin</span>
+        <button id="spin" type="button" aria-pressed="true">On</button>
+        <button id="dir" type="button" aria-label="Spin direction">&#8635; Clockwise</button>
+        <label class="speed" for="speed"><input id="speed" type="range" min="0.2" max="8" step="0.2" value="1.4" aria-label="Spin speed"><span id="speed-out">1.4&times;</span></label>
+      </div>
+      <div class="group" role="group" aria-label="View">
+        <span class="eyebrow">View</span>
+        <button id="wire" type="button" aria-pressed="false">Wireframe</button>
+        <button id="chat-toggle" type="button" aria-pressed="false">Chat<span class="unread" id="unread" hidden></span></button>
+        <button id="note-toggle" type="button" aria-pressed="false" title="Pause first, or wait until Claude is done">Add notes</button>
+      </div>
+    </div>
+  </footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const FRAME_MS = 750, FAST_MS = 300, TWEEN_MS = 520;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('bl:' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('bl:' + k, JSON.stringify(v)); } catch {} },
+  };
+
+  // ---------- three.js stage ----------
+  const canvas = $('view');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.setClearColor(0x0c0e13);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x0c0e13, 14, 40);
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
+  camera.position.set(4.5, 3.4, 6);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.target.set(0, 1, 0);
+  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a1d26, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.85);
+  sun.position.set(4, 8, 5);
+  scene.add(sun);
+  const grid = new THREE.GridHelper(12, 24, 0x2f3747, 0x1c212c);
+  scene.add(grid);
+  const modelRoot = new THREE.Group();
+  scene.add(modelRoot);
+
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / Math.max(1, h);
+    camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(canvas);
+
+  // Blender is z-up, three.js is y-up
+  const toThree = (src, out) => {
+    for (let i = 0; i < src.length; i += 3) { out[i] = src[i]; out[i + 1] = src[i + 2]; out[i + 2] = -src[i + 1]; }
+    return out;
+  };
+
+  // ---------- turntable settings (remembered per viewer) ----------
+  const spin = { on: store.get('spinOn', !reduceMotion), dir: store.get('spinDir', 1), speed: store.get('spinSpeed', 1.4) };
+  function applySpin() {
+    controls.autoRotate = spin.on && !noting;
+    controls.autoRotateSpeed = spin.speed * spin.dir;
+    $('spin').setAttribute('aria-pressed', String(spin.on));
+    $('spin').textContent = spin.on ? 'On' : 'Off';
+    $('dir').innerHTML = spin.dir > 0 ? '&#8635; Clockwise' : '&#8634; Counter';
+    $('speed').value = spin.speed;
+    $('speed-out').textContent = Number(spin.speed).toFixed(1) + '×';
+    store.set('spinOn', spin.on); store.set('spinDir', spin.dir); store.set('spinSpeed', spin.speed);
+  }
+
+  // ---------- turning a frame into meshes, animated from the frame before ----------
+  let isWire = false;
+  let parts = [];
+  let tweenStart = 0;
+  const triKey = (a, i) => a.slice(i, i + 9).map(v => v.toFixed(3)).join(',');
+
+  function clearModel() {
+    for (const p of parts) { p.geo.dispose(); p.mats.forEach(m => m.dispose()); }
+    parts = [];
+    modelRoot.clear();
+  }
+
+  function addMesh(positions, color, isFresh, name) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color[0], color[1], color[2]), side: THREE.DoubleSide });
+    if (isFresh) mat.emissive = new THREE.Color(0xffc93a);
+    const wireMat = new THREE.MeshBasicMaterial({ color: 0x0b0d12, wireframe: true, transparent: true, opacity: .55 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.name = name;
+    const wire = new THREE.Mesh(geo, wireMat);
+    wire.visible = isWire;
+    wire.raycast = () => {};
+    modelRoot.add(mesh, wire);
+    return { geo, mats: [mat, wireMat], wire };
+  }
+
+  function showFrame(frame, prev) {
+    clearModel();
+    const prevEntries = new Map(), prevKeys = new Set(), seen = new Map();
+    for (const o of prev ? prev.objects : []) {
+      const k = seen.get(o.name) || 0; seen.set(o.name, k + 1);
+      prevEntries.set(o.name + '#' + k, o.tris);
+      for (let i = 0; i + 8 < o.tris.length; i += 9) prevKeys.add(o.name + '|' + triKey(o.tris, i));
+    }
+    const cur = new Map();
+    for (const o of frame.objects) {
+      const k = cur.get(o.name) || 0; cur.set(o.name, k + 1);
+      const before = prevEntries.get(o.name + '#' + k);
+      if (prev && before && before.length === o.tris.length) {
+        // same shape: slide every vertex from where it was
+        const to = toThree(o.tris, new Float32Array(o.tris.length));
+        const from = toThree(before, new Float32Array(before.length));
+        parts.push({ ...addMesh(from.slice(), o.color, false, o.name), from, to });
+        continue;
+      }
+      // otherwise: old triangles stay, new ones build up from the bottom
+      const old = [], fresh = [];
+      for (let i = 0; i + 8 < o.tris.length; i += 9) {
+        (prev && prevKeys.has(o.name + '|' + triKey(o.tris, i)) ? old : fresh).push(o.tris.slice(i, i + 9));
+      }
+      if (old.length) parts.push(addMesh(toThree(old.flat(), new Float32Array(old.length * 9)), o.color, false, o.name));
+      if (fresh.length) {
+        fresh.sort((a, b) => Math.min(a[2], a[5], a[8]) - Math.min(b[2], b[5], b[8]));
+        const m = addMesh(toThree(fresh.flat(), new Float32Array(fresh.length * 9)), o.color, true, o.name);
+        m.geo.setDrawRange(0, 0);
+        parts.push({ ...m, freshCount: fresh.length * 3 });
+      }
+    }
+    tweenStart = performance.now();
+    frameTo(frame);
+  }
+
+  function animateParts(now) {
+    const t = Math.min(1, (now - tweenStart) / (reduceMotion ? 1 : TWEEN_MS));
+    const e = t * t * (3 - 2 * t);
+    const glow = Math.max(0, 1 - Math.max(0, (now - tweenStart - TWEEN_MS) / 900));
+    for (const p of parts) {
+      if (p.from && !p.settled) {
+        const pos = p.geo.attributes.position.array;
+        for (let i = 0; i < pos.length; i++) pos[i] = p.from[i] + (p.to[i] - p.from[i]) * e;
+        p.geo.attributes.position.needsUpdate = true;
+        p.geo.computeVertexNormals();
+        p.geo.computeBoundingSphere();
+        p.settled = t >= 1;
+      }
+      if (p.freshCount) {
+        p.geo.setDrawRange(0, Math.ceil((p.freshCount / 3) * e) * 3);
+        p.mats[0].emissiveIntensity = 0.85 * glow;
+      }
+    }
+  }
+
+  // ease the camera toward the model when it grows or moves
+  const goal = { center: new THREE.Vector3(0, 1, 0), radius: 2 };
+  function frameTo(frame) {
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const o of frame.objects) for (let i = 0; i < o.tris.length; i += 3) {
+      for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], o.tris[i + k]); hi[k] = Math.max(hi[k], o.tris[i + k]); }
+    }
+    if (lo[0] === Infinity) return;
+    goal.center.set((lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2, -(lo[1] + hi[1]) / 2);
+    const r = Math.max(0.8, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2);
+    if (Math.abs(r - goal.radius) / goal.radius > 0.12) goal.radius = r;
+    grid.position.y = Math.min(0, lo[2]);
+  }
+
+  let dragging = false;
+  controls.addEventListener('start', () => { dragging = true; });
+  controls.addEventListener('end', () => { setTimeout(() => { dragging = false; }, 2500); });
+  function followCamera() {
+    if (noting) return;  // hold still while the viewer places notes
+    controls.target.lerp(goal.center, 0.06);
+    // fit the model in whichever field of view is narrower (phones are tall)
+    const vfov = THREE.MathUtils.degToRad(camera.fov);
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+    const want = (goal.radius / Math.sin(Math.min(vfov, hfov) / 2)) * 1.12;
+    const off = camera.position.clone().sub(controls.target);
+    const d = off.length();
+    if (Math.abs(d - want) > 0.01 && !dragging) off.setLength(d + (want - d) * 0.05);
+    camera.position.copy(controls.target).add(off);
+  }
+
+  // ---------- the stream: frames arrive from the database, play in order ----------
+  let all = [], queue = [], shown = null, shownAt = 0, lastArrival = 0, paused = false;
+  let noting = false;
+
+  function play(now) {
+    if (paused || noting) return;
+    if (queue.length && now - shownAt >= (queue.length > 8 ? FAST_MS : FRAME_MS)) {
+      const next = queue.shift();
+      showFrame(next, shown);
+      shown = next; shownAt = now;
+      paintStatus();
+    }
+  }
+
+  function paintStatus() {
+    const live = !paused && (queue.length > 0 || performance.now() - lastArrival < 6000);
+    const onair = $('onair');
+    onair.classList.toggle('is-live', live);
+    onair.classList.toggle('is-paused', paused);
+    $('onair-text').textContent = paused
+      ? (queue.length ? `PAUSED · ${queue.length} waiting` : 'PAUSED')
+      : live ? 'LIVE' : all.length ? 'IDLE' : 'OFF AIR';
+    $('empty').hidden = all.length > 0;
+    $('pause').textContent = paused ? 'Play' : 'Pause';
+    $('pause').setAttribute('aria-pressed', String(paused));
+    // notes can be added while paused, or once the build has finished playing
+    $('note-toggle').disabled = !shown || (!noting && !paused && queue.length > 0);
+    if (!shown) return;
+    $('label').textContent = shown.label || 'Untitled step';
+    $('tris').textContent = shown.tris;
+    $('frame').textContent = shown.seq + 1;
+    $('frames').textContent = all.length;
+    const ticker = $('ticker');
+    ticker.textContent = '';
+    if (shown.code) {
+      const ln = document.createElement('span');
+      ln.className = 'line';
+      ln.textContent = '› ' + (shown.line ? 'line ' + shown.line : '');
+      ticker.append(ln, document.createTextNode(shown.code));
+    }
+  }
+  setInterval(paintStatus, 1000);
+
+  // ---------- notes: click parts of the model, give each a reason, submit ----------
+  let notes = [];   // { id, name, point, reason }
+  let nextNoteId = 1;
+  const raycaster = new THREE.Raycaster();
+  let downAt = null;
+
+  function setNoting(on) {
+    noting = on;
+    $('app').classList.toggle('is-noting', on);
+    $('note-toggle').setAttribute('aria-pressed', String(on));
+    $('notes').hidden = !on;
+    if (on) {
+      $('chat').hidden = true;
+      $('chat-toggle').setAttribute('aria-pressed', 'false');
+    } else {
+      setChat(chatOpen);
+    }
+    applySpin();
+    renderNotes();
+    paintStatus();
+  }
+
+  canvas.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerup', e => {
+    if (!noting || !downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 5) return;
+    const r = canvas.getBoundingClientRect();
+    raycaster.setFromCamera({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }, camera);
+    const hit = raycaster.intersectObjects(modelRoot.children, false)[0];
+    if (!hit) { $('notes-status').textContent = 'That missed the model. Click on a part.'; return; }
+    notes.push({ id: nextNoteId++, name: hit.object.userData.name || 'part', point: hit.point.clone(), reason: '' });
+    renderNotes(true);
+  });
+
+  function renderNotes(focusLast) {
+    const body = $('notes-body');
+    body.textContent = '';
+    if (!notes.length) {
+      const p = document.createElement('p');
+      p.className = 'hint';
+      p.textContent = 'Click any part of the model to pin a note to it. Add a reason for each pin, then submit them together. Drag to turn the model.';
+      body.append(p);
+    }
+    notes.forEach((n, i) => {
+      const card = document.createElement('div');
+      card.className = 'note';
+      const head = document.createElement('div');
+      head.className = 'head';
+      const pin = document.createElement('span'); pin.className = 'pin'; pin.textContent = i + 1;
+      const name = document.createElement('span'); name.className = 'name'; name.textContent = n.name;
+      const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'x'; rm.textContent = 'Remove';
+      rm.addEventListener('click', () => { notes = notes.filter(x => x !== n); renderNotes(); });
+      head.append(pin, name, rm);
+      const ta = document.createElement('textarea');
+      ta.id = 'note-' + n.id;
+      ta.placeholder = 'What should change here, and why?';
+      ta.value = n.reason;
+      ta.setAttribute('aria-label', `Reason for note ${i + 1} on ${n.name}`);
+      ta.addEventListener('input', () => { n.reason = ta.value; updateSubmit(); });
+      card.append(head, ta);
+      body.append(card);
+    });
+    if (focusLast && notes.length) body.lastElementChild.querySelector('textarea').focus();
+    updateSubmit();
+  }
+
+  function updateSubmit(message) {
+    const missing = notes.filter(n => !n.reason.trim()).length;
+    $('submit').disabled = !notes.length || missing > 0;
+    $('notes-status').textContent = message || (!notes.length ? 'Click parts of the model to add notes.'
+      : missing ? `${missing} note${missing > 1 ? 's' : ''} still need${missing > 1 ? '' : 's'} a reason.`
+      : `${notes.length} note${notes.length > 1 ? 's' : ''} ready.`);
+  }
+
+  function paintPins() {
+    const box = $('labels');
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    while (box.children.length > notes.length) box.lastChild.remove();
+    notes.forEach((n, i) => {
+      let el = box.children[i];
+      if (!el) { el = document.createElement('span'); box.append(el); }
+      el.textContent = i + 1;
+      const p = n.point.clone().project(camera);
+      el.style.left = ((p.x + 1) / 2) * w + 'px';
+      el.style.top = ((1 - p.y) / 2) * h + 'px';
+      el.hidden = p.z > 1;
+    });
+  }
+
+  let comments = null;
+  async function submitNotes() {
+    $('submit').disabled = true;
+    const at = shown ? `frame ${shown.seq + 1}, step "${shown.label}"` : 'the model';
+    const lines = notes.map((n, i) => `${i + 1}. ${n.name}: ${n.reason.trim()}`);
+    const text = `Notes from the Blender Live feed (${at}):\n${lines.join('\n')}`.slice(0, 3900);
+    try {
+      comments = comments || await claude.use('comments');
+      if (!comments) throw { code: 'unavailable' };
+      const anchor = await comments.anchorFor(canvas);
+      let can = 'off';
+      try { can = await comments.canSendToClaude(); } catch {}
+      if (can === 'available') await comments.sendToClaude({ anchor, text });
+      else await comments.create({ anchor, text });
+      notes = [];
+      renderNotes();
+      updateSubmit(can === 'available' ? 'Sent to Claude. Its reply shows up in the chat.' : 'Saved as a comment. Tell Claude in chat to read your notes.');
+    } catch (err) {
+      const code = err && err.code;
+      updateSubmit(code === 'rate_limited' ? 'Too many sends in a row. Wait a moment, then submit again.'
+        : code === 'consent_required' ? 'Allow comments for this page when asked, then submit again.'
+        : 'Could not send. Copy your notes into the chat instead.');
+    }
+  }
+
+  // ---------- chat feed: what Claude says while it works ----------
+  let chatOpen = store.get('chatOpen', false), chatSeen = store.get('chatSeen', 0), chatLatest = 0;
+  function setChat(open) {
+    chatOpen = open;
+    store.set('chatOpen', open);
+    $('chat').hidden = !open || noting;
+    $('chat-toggle').setAttribute('aria-pressed', String(open && !noting));
+    if (open) { chatSeen = chatLatest; store.set('chatSeen', chatSeen); }
+    $('unread').hidden = open || chatLatest <= chatSeen;
+  }
+  function renderChat(msgs) {
+    const body = $('chat-body');
+    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+    body.textContent = '';
+    if (!msgs.length) {
+      const p = document.createElement('p'); p.className = 'hint';
+      p.textContent = "Claude's notes about what it's building show up here.";
+      body.append(p);
+    }
+    for (const m of msgs) {
+      const div = document.createElement('div'); div.className = 'msg';
+      const who = document.createElement('span'); who.className = 'who'; who.textContent = 'Claude';
+      if (m.at) {
+        const t = document.createElement('time'); t.dateTime = m.at;
+        t.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        who.append(t);
+      }
+      const p = document.createElement('p'); p.textContent = String(m.text || '');
+      div.append(who, p);
+      body.append(div);
+    }
+    if (atBottom) body.scrollTop = body.scrollHeight;
+    chatLatest = msgs.length ? msgs[msgs.length - 1].seq : 0;
+    setChat(chatOpen);
+  }
+
+  // ---------- render loop ----------
+  function loop(now) {
+    play(now);
+    animateParts(now);
+    followCamera();
+    controls.update();
+    renderer.render(scene, camera);
+    if (notes.length) paintPins(); else if ($('labels').children.length) $('labels').textContent = '';
+    requestAnimationFrame(loop);
+  }
+  resize();
+  applySpin();
+  setChat(chatOpen);
+  renderNotes();
+  requestAnimationFrame(loop);
+
+  // ---------- controls ----------
+  $('pause').addEventListener('click', () => { paused = !paused; if (!paused && noting) setNoting(false); paintStatus(); });
+  $('replay').addEventListener('click', () => {
+    if (!all.length) return;
+    if (noting) setNoting(false);
+    paused = false; queue = all.slice(); shown = null; shownAt = 0; clearModel(); paintStatus();
+  });
+  $('latest').addEventListener('click', () => {
+    if (!all.length) return;
+    queue = []; const last = all[all.length - 1];
+    showFrame(last, null); shown = last; paintStatus();
+  });
+  $('spin').addEventListener('click', () => { spin.on = !spin.on; applySpin(); });
+  $('dir').addEventListener('click', () => { spin.dir = -spin.dir; applySpin(); });
+  $('speed').addEventListener('input', e => { spin.speed = Number(e.target.value); spin.on = true; applySpin(); });
+  $('wire').addEventListener('click', e => {
+    isWire = !isWire;
+    e.currentTarget.setAttribute('aria-pressed', String(isWire));
+    for (const p of parts) p.wire.visible = isWire;
+  });
+  $('chat-toggle').addEventListener('click', () => { if (noting) setNoting(false); setChat(!chatOpen || $('chat').hidden); });
+  $('chat-close').addEventListener('click', () => setChat(false));
+  $('note-toggle').addEventListener('click', () => setNoting(!noting));
+  $('notes-close').addEventListener('click', () => setNoting(false));
+  $('submit').addEventListener('click', submitNotes);
+
+  // ---------- database: the run, its frames, and the chat ----------
+  async function connect() {
+    const db = await claude.use('db');
+    if (!db) {
+      $('empty').querySelector('p').innerHTML = '<strong>The live feed needs claude.ai</strong>Open this page in claude.ai while signed in to see Claude model in real time.';
+      return;
+    }
+    db.collection('chat').orderBy('seq', 'desc').limit(60).onSnapshot(
+      qs => renderChat(qs.docs.map(d => d.data()).sort((a, b) => a.seq - b.seq)),
+      () => {},
+    );
+    let stopFrames = null, run = null, first = true;
+    db.doc('live/status').onSnapshot(snap => {
+      const next = snap.exists ? snap.data().run : null;
+      if (next === run) return;
+      const isNewWhileWatching = run !== null;  // a new model started while the page is open: play it from its first frame
+      run = next;
+      if (stopFrames) stopFrames();
+      all = []; queue = []; shown = null; first = !isNewWhileWatching; clearModel(); paintStatus();
+      if (!run) return;
+      stopFrames = db.collection('frames').where('run', '==', run).onSnapshot(qs => {
+        const docs = qs.docs.map(d => d.data()).sort((a, b) => a.seq - b.seq);
+        const known = new Set(all.map(f => f.seq));
+        const added = docs.filter(f => !known.has(f.seq));
+        all = docs;
+        if (first) {
+          // joined late: show where the model is now, Replay plays it from the start
+          first = false;
+          const last = all[all.length - 1];
+          if (last) { showFrame(last, null); shown = last; }
+        } else if (added.length) {
+          queue.push(...added);
+          lastArrival = performance.now();
+        }
+        paintStatus();
+      }, err => { $('label').textContent = 'Feed stopped: ' + err.code; });
+    }, err => { $('label').textContent = 'Feed stopped: ' + err.code; });
+  }
+  connect();
+})();
+</script>

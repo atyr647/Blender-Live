@@ -1,0 +1,37 @@
+#!/bin/sh
+# Runs bstep.py with a Blender-enabled Python, hiding Blender's log noise.
+#   bstep setup   installs Blender (the `bpy` module) into ~/.cache/blender-live
+DIR=$(cd "$(dirname "$0")" && pwd)
+VENV="${BSTEP_VENV:-$HOME/.cache/blender-live/venv}"
+PY="${BSTEP_PY:-$VENV/bin/python}"
+
+if [ "$1" = "setup" ]; then
+  if "$PY" -c "import bpy" >/dev/null 2>&1; then echo "BSTEP_READY"; exit 0; fi
+  mkdir -p "$(dirname "$VENV")"
+  if command -v uv >/dev/null 2>&1; then
+    uv venv -q --python 3.13 "$VENV" && uv pip install -q --python "$VENV/bin/python" bpy pillow
+  else
+    python3.13 -m venv "$VENV" && "$VENV/bin/pip" install -q bpy pillow
+  fi
+  # headless renders need a software OpenGL (EGL) driver
+  if ! ldconfig -p 2>/dev/null | grep -q libEGL.so.1 && command -v apt-get >/dev/null; then
+    (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libegl1 libegl-mesa0 \
+      libgl1-mesa-dri libgles2 libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1) >/dev/null 2>&1
+  fi
+  "$PY" -c "import bpy" >/dev/null 2>&1 && echo "BSTEP_READY" || { echo "BSTEP_SETUP_FAILED"; exit 1; }
+  exit 0
+fi
+
+if ! [ -x "$PY" ]; then echo "BSTEP_NEEDS_SETUP: run '$0 setup' (or /blender-setup)"; exit 3; fi
+# streaming mode (the mod): raw output, the mod picks out the BSTEP_ lines
+if [ -n "$BSTEP_STREAM" ]; then exec "$PY" "$DIR/bstep.py" "$@" 2>&1; fi
+LOG=$(mktemp)
+"$PY" "$DIR/bstep.py" "$@" >"$LOG" 2>&1
+CODE=$?
+if [ $CODE -eq 0 ]; then
+  grep -E "^BSTEP_" "$LOG"
+else
+  grep -E "^BSTEP_" "$LOG" | sed 's/^BSTEP_TB //' | tail -40
+fi
+rm -f "$LOG"
+exit $CODE

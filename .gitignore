@@ -1,0 +1,7 @@
+# Blender Live's working folder (scene, frames, renders): made fresh each session
+blender-live/
+*.blend1
+__pycache__/
+# written by Claude Code when it loads the mod
+mod/.claude-plugin/types/
+mod/tsconfig.json

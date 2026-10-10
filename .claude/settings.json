@@ -1,0 +1,6 @@
+{
+  "extraKnownMarketplaces": {
+    "blender-live": { "source": { "source": "github", "repo": "atyr647/blender-live" } }
+  },
+  "enabledPlugins": { "blender-live@blender-live": true }
+}

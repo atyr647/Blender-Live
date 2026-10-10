@@ -1,0 +1,5 @@
+{
+  "name": "blender-live",
+  "owner": { "name": "atyr647" },
+  "plugins": [{ "name": "blender-live", "source": "./mod" }]
+}
