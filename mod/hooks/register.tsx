@@ -33,18 +33,20 @@ const frameStart = atom({ plugin: 'blender-live', key: 'frameStart' } as const, 
 const queue = atom({ plugin: 'blender-live', key: 'queue' } as const, [])
 const note = atom({ plugin: 'blender-live', key: 'note' } as const, null)
 
-const STEP_DESCRIPTION = `Run one modeling step in Blender (headless, Blender 5.x) and show it to the user live.
+const STEP_DESCRIPTION = `Run one modeling step in Blender (headless) and stream it to the user's live feed.
 
-The user is watching a spinning 3D view of the scene that updates after every call, with the newly added parts glowing, so build the model in small, visible steps: one part or one change per call, each with a short label ("Chest body", "Rounded lid", "Iron bands"). The scene is saved between calls.
+The user watches a 3D feed of the scene: a simplified preview streams while your code runs, and when the step finishes the feed swaps in the full-detail model with its real materials (a glTF the step exports, with procedural textures baked into images, lit by the scene's own world/sky). So build in visible steps with short labels ("Hull", "Canopy", "Nose gear"). The scene is saved between calls. Any size works, from N64 low-poly to multi-million-triangle models.
 
-\`code\` is Python run inside Blender with these ready to use: bpy, bmesh, Vector, math, and
-  mat(name, (r, g, b))  -> get/create a flat-coloured material (linear RGB 0..1)
+\`code\` is Python run inside Blender with these ready to use: bpy, bmesh, Vector, math, np (numpy), and
+  mat(name, (r, g, b))  -> get/create a simple material (linear RGB 0..1); any real node material works too
   paint(obj, material)  -> give an object that material
-Give every object a clear name and a material (paint) so it shows in colour. Objects whose names start with "_" are helpers and are hidden. The ground is at z = 0.
+  snap("what")          -> take a live frame now (also works inside your own helper functions)
+  focus("Armory*")      -> point the feed camera at these objects (globs, comma separated) from here on
+Objects whose names start with "_" are helpers and are hidden. The ground is at z = 0. Folders and prelude files set with blender_configure (an art kit, gear code) are importable/loaded in every step.
 
-The view streams while your code runs: after every top-level line (and every line directly inside a top-level for/while loop) that changes the scene, the user sees a new frame with that line of code under it, and shapes slide smoothly into place. So model the way a person would, one visible operation per line: add a primitive, then extrude, translate, scale, bevel or inset with bmesh (bmesh.from_edit_mesh in edit mode, or bmesh.new() + bm.to_mesh), rather than one big helper function. About 5 to 25 changing lines per step looks good; the call returns after the user has watched them play.
+Live frames: by default one after every top-level line (and every line directly in a top-level loop) that changes the scene, paced automatically so big scenes stay fast. Options: \`mode\` "objects" (a frame only when parts are added/removed: good for scripts that make hundreds of parts) or "end" (one frame per step); \`pace\` seconds between frames; \`focus\` to look at part of a big model (everything around it turns see-through in the feed); \`render\` "cycles" (or "cycles:128:1920x1080") to also render the step realistically with Cycles.
 
-If the code raises, nothing is saved and you get the traceback: fix it and call again. On success you get the step's triangle count, the scene's objects and a rendered picture to check your work. Low-poly, N64-style models (a few hundred triangles, flat colours) look best.`
+If the code raises, nothing is saved and you get the traceback: fix it and call again. On success you get the triangle count, the objects, and a list of files to send to the feed (do that right away, as the result says).`
 
 let workDir = 'blender-live'
 let ticker: { cancel: () => void } | undefined
@@ -79,12 +81,90 @@ async function loadModel($: $, path: string): Promise<Model | null> {
   const cached = models.get(path)
   if (cached) return cached
   try {
-    const model = JSON.parse(await $.fs.read(path)) as Model
+    const raw = JSON.parse(await $.fs.read(path)) as Model & { format?: number; objects: unknown[] }
+    const model = raw.format === 3 ? fromFormat3(raw as unknown as Format3) : raw
     models.set(path, model)
     return model
   } catch {
     return null
   }
+}
+
+type Format3Entry = { n: string; c: number[]; o?: boolean; lo: number[]; hi: number[]; v: string; i: string; w: number }
+type Format3 = { step: number; label: string; tris: number; objects: Format3Entry[] }
+
+function bytesOf(b64: string): Uint8Array {
+  const bin = atob(b64)
+  const out = new Uint8Array(bin.length)
+  for (let k = 0; k < bin.length; k++) out[k] = bin.charCodeAt(k)
+  return out
+}
+
+// the engine's compact frames (16-bit positions + indices) as flat triangles for the SVG view
+function fromFormat3(doc: Format3): Model {
+  const objects = doc.objects.map(o => {
+    const vb = bytesOf(o.v)
+    const q = new Int16Array(vb.buffer, vb.byteOffset, vb.byteLength / 2)
+    const ib = bytesOf(o.i)
+    const idx = o.w === 4 ? new Uint32Array(ib.buffer, ib.byteOffset, ib.byteLength / 4) : new Uint16Array(ib.buffer, ib.byteOffset, ib.byteLength / 2)
+    const tris: number[] = []
+    for (const v of idx) {
+      for (let a = 0; a < 3; a++) {
+        const lo = o.lo[a] ?? 0
+        const hi = o.hi[a] ?? 0
+        tris.push(((q[v * 3 + a] ?? 0) + 32768) / 65535 * (hi - lo) + lo)
+      }
+    }
+    return { name: o.n, color: o.c, open: o.o ?? true, tris }
+  })
+  return { step: doc.step, label: doc.label, tris: doc.tris, objects }
+}
+
+const fileName = (p: string) => p.split('/').pop()?.replace(/\.json$/, '') ?? p
+
+// what Claude sends to the feed page after a step: files to upload, then database writes
+async function feedInstructions($: $, n: number, stdout: string, feedFrames: string[]) {
+  const assets = [...stdout.matchAll(/^BSTEP_ASSET (.+)$/gm)].map(m => m[1]!.trim())
+  const gltf = /^BSTEP_GLTF (.+)$/m.exec(stdout)?.[1]?.trim()
+  const sky = /^BSTEP_SKY (.+)$/m.exec(stdout)?.[1]?.trim()
+  const render = /^BSTEP_RENDER (.+?)\t(.*)$/m.exec(stdout)
+  const frameset = /^BSTEP_FRAMESET (.+)$/m.exec(stdout)?.[1]?.trim()
+  const warns = [...stdout.matchAll(/^BSTEP_WARN (.+)$/gm)].map(m => m[1])
+  const baked = /^BSTEP_BAKED (.+)$/m.exec(stdout)?.[1]
+  const out: string[] = ['', '--- Send to the feed now ---']
+  const uploads = [...assets, ...(render ? [render[1]!] : [])]
+  if (uploads.length) {
+    out.push(`1. Upload to the feed artifact (Artifact publish, url = the feed, asset: true, file_paths up to 25 per call): ${uploads.join(' ')}`)
+    out.push('   Each .js file is a part of a packed file: its key is in the file (window.BLD["<key>/<part>"]). ' +
+      'Write one "files" doc per key: {run, key, urls: [url of part 0, part 1, ...]}, doc id = key with "/" replaced by "_".')
+  }
+  // frames in batches under the 1 MiB / 50 writes limits
+  const batches: string[][] = [[]]
+  let size = 0
+  for (const p of feedFrames) {
+    let bytes = 0
+    try {
+      bytes = (await $.fs.stat(p)).size
+    } catch {}
+    const last = batches[batches.length - 1]!
+    if (last.length >= 45 || size + bytes > 900_000) {
+      batches.push([])
+      size = 0
+    }
+    batches[batches.length - 1]!.push(p)
+    size += bytes
+  }
+  const writes = batches.filter(b => b.length).map(b => b.map(p => `frames/${fileName(p)} <- ${p}`).join(', '))
+  out.push(`${uploads.length ? 2 : 1}. One ArtifactData batch (set; file_path where a file is named):`)
+  if (frameset) out.push(`   framesets/s${n} <- ${frameset}  (this step's ${feedFrames.length} live frames, packed in the uploaded frames_s${String(n).padStart(2, '0')} file)`)
+  else writes.forEach((w, k) => out.push(`   frames batch ${k + 1}: ${w}`))
+  if (gltf) out.push(`   also: gltf/s${n} <- ${gltf}`)
+  if (sky) out.push(`   also: sky/s${n} <- ${sky}`)
+  if (render) out.push(`   also: renders/s${n} = {run, step: ${n}, url: <uploaded url of ${render[1]}>, samples, size, time} (${render[2]!.split('\t').join(', ')})`)
+  out.push('   and one chat/mNNNN note {seq, at, text} saying what you built.')
+  if (baked) out.push(`Baked textures: ${baked}`)
+  if (warns.length) out.push(`Warnings: ${warns.join(' | ')}`)
+  return '\n' + out.join('\n')
 }
 
 // a failed call is a deny: the model reads the text as an error result
@@ -186,7 +266,7 @@ export const register: Register = on => {
     await $.command.register({ name: 'blender-pane', description: 'Open Blender Live in a big side pane' })
     await $.command.register({
       name: 'blender-setup',
-      description: 'Install Blender for the Blender Live mod (one time, about a minute)',
+      description: 'Install Blender for the Blender Live mod (one time, about a minute). Add a version, e.g. 4.2, for that one',
     })
 
     await $.tool.register({
@@ -198,8 +278,31 @@ export const register: Register = on => {
         properties: {
           label: { type: 'string', description: 'Short name of this step, shown to the user' },
           code: { type: 'string', description: 'Python (bpy) to run on the scene' },
+          focus: { type: 'string', description: 'Objects the feed camera looks at, e.g. "Armory*" or "NoseGear*,GearDoor*"' },
+          mode: { type: 'string', enum: ['line', 'objects', 'end'], description: 'When to take live frames (default line)' },
+          pace: { type: 'number', description: 'At least this many seconds between live frames' },
+          render: { type: 'string', description: '"cycles", or "cycles:<samples>:<W>x<H>", to also render this step with Cycles' },
         },
         required: ['label', 'code'],
+      },
+    })
+    await $.tool.register({
+      name: 'blender_configure',
+      description:
+        'Change Blender Live settings for this project (kept in config.json, used by every later step). ' +
+        'paths: folders to put on sys.path (your helper modules). prelude: .py files run before every step (an art kit). ' +
+        'blender: path to a Blender executable to use instead of the bundled bpy (e.g. a 4.2 LTS install). ' +
+        'bpy_version: which bundled bpy to use (run /blender-setup <version> first, e.g. 4.2). ' +
+        'preview_tris: triangles per live frame (default 12000). pace, mode: live frame defaults. ' +
+        'realtime/bake/sky: the realistic feed view (default on). bake_size: baked texture size (default 1024). ' +
+        'render: "cycles" to render every step, samples, render_size [W, H].',
+      isDeferred: false,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          settings: { type: 'object', description: 'Settings to change, e.g. {"paths": ["/repo/kit"], "mode": "objects"}' },
+        },
+        required: ['settings'],
       },
     })
     await $.tool.register({
@@ -244,9 +347,10 @@ export const register: Register = on => {
     return { text: 'Blender Live pane opened.' }
   })
 
-  on('command.run', { command: 'blender-setup' }, async $ => {
-    $.ui.toast('Installing Blender... this takes about a minute')
-    const out = await run($, ['setup'], 600_000)
+  on('command.run', { command: 'blender-setup' }, async ($, e) => {
+    const version = e.args.trim()
+    $.ui.toast(`Installing Blender${version ? ' ' + version : ''}... this takes about a minute`)
+    const out = await run($, version ? ['setup', version] : ['setup'], 600_000)
     const ok = out.stdout.includes('BSTEP_READY')
     return { text: ok ? 'Blender is installed and ready.' : `Setup failed:\n${out.stdout}\n${out.stderr}` }
   })
@@ -265,9 +369,15 @@ export const register: Register = on => {
       const stepFrames: BlenderFrame[] = []
       let lastPath = (await read($, queue)).at(-1)?.path ?? (await read($, frame))?.path ?? null
       let pending = ''
+      const env: Record<string, string> = { BSTEP_DIR: workDir, BSTEP_STREAM: '1' }
+      if (e.focus) env.BSTEP_FOCUS = String(e.focus)
+      if (e.mode) env.BSTEP_MODE = String(e.mode)
+      if (e.pace !== undefined) env.BSTEP_PACE = String(e.pace)
+      if (e.render) env.BSTEP_RENDER = String(e.render)
+      const feedFrames: string[] = []
       const child = $.process.spawn({
         argv: ['sh', `${$.plugin.root}/engine/bstep`, 'step', label, '-c', code],
-        env: { BSTEP_DIR: workDir, BSTEP_STREAM: '1' },
+        env,
       })
       for await (const chunk of child) {
         pending += chunk.text
@@ -276,8 +386,9 @@ export const register: Register = on => {
         for (const line of parts) {
           if (!line.startsWith('BSTEP_')) continue
           lines.push(line)
-          const snap = /^BSTEP_SNAP (.+?)\t(\d+)\t(.*)$/.exec(line)
+          const snap = /^BSTEP_SNAP (.+?)\t(\d+)\t([^\t]*)(?:\t(.*))?$/.exec(line)
           if (snap) {
+            if (snap[4]) feedFrames.push(snap[4])
             const f: BlenderFrame = { path: snap[1]!, prevPath: lastPath, line: Number(snap[2]), code: snap[3]!, label }
             lastPath = f.path
             stepFrames.push(f)
@@ -327,11 +438,20 @@ export const register: Register = on => {
         `Step ${n} "${label}" done: ${step.tris} triangles in the scene.\n` +
         `Objects: ${objects.join(', ') || '(none)'}\n` +
         (step.added.length ? `New this step: ${step.added.join(', ')}` : 'No new objects (existing ones changed).') +
-        `\nLive feed frames (collection "frames", doc id = file name): ${stepFrames.map(f => f.path).join(' ')}`
+        (await feedInstructions($, n, stdout, feedFrames))
       return textResult(summary)
     } finally {
       await update($, busy, () => null)
     }
+  })
+
+  on('tool.call', { tool: 'mcp__blender-live__blender_configure' }, async ($, e) => {
+    const settings = (e.settings ?? {}) as Record<string, unknown>
+    const pairs = Object.entries(settings).map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+    if (!pairs.length) return textResult('Nothing to change: pass settings, e.g. {"mode": "objects"}.', true)
+    const out = await run($, ['configure', ...pairs])
+    if (out.exitCode !== 0) return textResult(`Could not save the settings.\n${out.stdout}${out.stderr}`, true)
+    return textResult(`Saved. Settings now: ${out.stdout.replace(/^BSTEP_CONFIG /, '').trim()}`)
   })
 
   on('tool.call', { tool: 'mcp__blender-live__blender_undo' }, async $ => {

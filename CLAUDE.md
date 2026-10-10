@@ -7,17 +7,25 @@ The user (atyr647) is a beginner hobbyist making N64-style homebrew. They watch 
 1. Install Blender (the `bpy` Python module, about a minute):
    `sh mod/engine/bstep setup` (prints `BSTEP_READY`; it also installs a software OpenGL driver with apt when needed).
 2. Load the mod. `.claude/settings.json` enables it from this repo's marketplace. If the `mcp__blender-live__blender_*` tools are not in your tool list, either load the `plugin-authoring` skill and copy `mod/` into the session's mods folder it names, or run the engine directly with Bash (`sh mod/engine/bstep step "Label" file.py`, with `BSTEP_STREAM=1` to get the per-line `BSTEP_SNAP` lines).
-3. The feed artifact is https://claude.ai/artifact/SbpoaFvP4JzcAsKurHHSGa. Its source is `feed/blender-live.html`; republish changes with the Artifact tool and that `url` (read it first).
+3. The feed artifact is https://claude.ai/artifact/SbpoaFvP4JzcAsKurHHSGa. Its source is `feed/blender-live.html`; republish changes with the Artifact tool and that `url` (read it first). It declares `db`, `comments` and `assets`.
+4. For a big project, call `blender_configure` once (paths, prelude, blender or bpy_version, mode). See README "Big projects".
 
 ## Sending a model to the feed
 
-The page reads three things from the artifact database (use the `ArtifactData` tool):
+Every `blender_step` result ends with "Send to the feed now": do it right away, in this order.
 
-- `live/status` `{ run }`: which model is on air. After `blender_reset`, read the new id from `<workspace>/run.txt` and `set` this doc (pin `if_version` to the version you read). The page clears and plays the new run from its first frame.
-- `frames/<snap_NNNNN>`: one doc per snapshot, written with `file_path` set to `<workspace>/frames/live/snap_NNNNN.json` (the file already holds `run`, `seq`, `label`, `line`, `code`, `tris`, `objects`). `blender_step` lists the new files at the end of its result.
-- `chat/<mNNNN>` `{ seq, at, text }`: short plain-language notes about what you just built. Continue `seq` from the highest one already there.
+1. **Upload** the listed files with the Artifact tool: `url` = the feed, `asset: true`, `file_paths` (up to 25 per call). They are `.js` packs (frames, glTF, sky) and Cycles `.png` renders.
+2. **One ArtifactData batch** with:
+   - `files/<key with / as _>` = `{run, key, urls: [...]}` for every uploaded `.js` key (the key is inside the file: `window.BLD["<key>/<part>"]`; a key with several parts lists their urls in order);
+   - `framesets/s<step>`, `gltf/s<step>`, `sky/s<step>` from the files the result names (`file_path`);
+   - `renders/s<step>` = `{run, step, url, samples, size, time}` when there is a render;
+   - one `chat/mNNNN` note `{seq, at, text}`, continuing `seq` from the highest one there.
 
-After each `blender_step`, send that step's frames and one chat note in a single `batch` (up to 50 writes, 1 MiB). Keep frames under the 256 KiB doc limit (a few thousand triangles).
+After `blender_reset`, read the new run id from `<workspace>/run.txt` and `set` `live/status` = `{run}` (pin `if_version` to the version you read). The page clears and plays the new run from its first frame.
+
+If the user says the feed looks wrong, read `diag/last`: the page writes loading errors there.
+
+The database holds 100 MB in all, so frames go in the file store (one pack per step) and the database only holds small index docs.
 
 ## Notes from the user
 
@@ -30,3 +38,4 @@ Each note names the object it was pinned to. Make the changes as new `blender_st
 - One visible operation per line: add a primitive, then extrude, translate, scale or inset with `bmesh` in edit mode. Each changing line becomes a frame.
 - Give every object a name and `paint(obj, mat(name, (r, g, b)))`. Names starting with `_` are hidden helpers.
 - Check your work before moving on: each step renders `<workspace>/frames/step_NN.png`, which you can Read. Fix mistakes with `blender_undo` or a follow-up step.
+- Big scenes: use `mode: "objects"` or a `pace`, `focus` on the part being built, and real node materials (they come through in the realistic view; procedural textures are baked automatically).

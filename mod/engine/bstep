@@ -1,37 +1,97 @@
 #!/bin/sh
-# Runs bstep.py with a Blender-enabled Python, hiding Blender's log noise.
-#   bstep setup   installs Blender (the `bpy` module) into ~/.cache/blender-live
+# Blender Live's launcher.
+#   bstep setup [version]          install Blender as a Python module (bpy), e.g. `setup 4.2`
+#   bstep configure key=value ...  change settings in $BSTEP_DIR/config.json (values are JSON or text)
+#   bstep <command> ...            run bstep.py (see its docstring): reset, step, undo, movie, export
+#
+# Which Blender runs: config "blender" (a Blender executable, e.g. your 4.2 LTS install),
+# else the bpy module for config "bpy_version" (default: the newest one setup installed).
 DIR=$(cd "$(dirname "$0")" && pwd)
-VENV="${BSTEP_VENV:-$HOME/.cache/blender-live/venv}"
-PY="${BSTEP_PY:-$VENV/bin/python}"
+WORK="${BSTEP_DIR:-$PWD/blender-live}"
+CACHE="$HOME/.cache/blender-live"
+
+conf() {  # conf key -> the setting's value, or nothing
+  python3 -c "import json,sys
+try: print(json.load(open(sys.argv[1])).get(sys.argv[2]) or '')
+except Exception: print('')" "$WORK/config.json" "$1"
+}
+
+venv_for() {  # venv folder for a bpy version ("" = the default one)
+  if [ -n "$1" ]; then echo "$CACHE/venv-$1"; else echo "$CACHE/venv"; fi
+}
+
+if [ "$1" = "configure" ]; then
+  shift
+  mkdir -p "$WORK"
+  python3 - "$WORK/config.json" "$@" <<'PY'
+import json, sys
+path, pairs = sys.argv[1], sys.argv[2:]
+try:
+    cfg = json.load(open(path))
+except Exception:
+    cfg = {}
+for pair in pairs:
+    key, _, raw = pair.partition("=")
+    try:
+        cfg[key] = json.loads(raw)
+    except ValueError:
+        cfg[key] = raw
+json.dump(cfg, open(path, "w"), indent=2)
+print("BSTEP_CONFIG " + json.dumps(cfg))
+PY
+  exit $?
+fi
 
 if [ "$1" = "setup" ]; then
-  if "$PY" -c "import bpy" >/dev/null 2>&1; then echo "BSTEP_READY"; exit 0; fi
-  mkdir -p "$(dirname "$VENV")"
+  VER="${2:-$(conf bpy_version)}"
+  VENV="${BSTEP_VENV:-$(venv_for "$VER")}"
+  PY="$VENV/bin/python"
+  if "$PY" -c "import bpy" >/dev/null 2>&1; then echo "BSTEP_READY $("$PY" -c 'import bpy; print(bpy.app.version_string)' 2>/dev/null)"; exit 0; fi
+  mkdir -p "$CACHE"
+  case "$VER" in
+    ""|5.*) PYV=3.13; SPEC="bpy" ;;
+    4.*) PYV=3.11; SPEC="bpy==$VER.*" ;;
+    *) PYV=3.11; SPEC="bpy==$VER.*" ;;
+  esac
+  [ -z "$VER" ] && SPEC="bpy"
   if command -v uv >/dev/null 2>&1; then
-    uv venv -q --python 3.13 "$VENV" && uv pip install -q --python "$VENV/bin/python" bpy pillow
+    uv venv -q --python "$PYV" "$VENV" && uv pip install -q --python "$PY" "$SPEC" pillow numpy
   else
-    python3.13 -m venv "$VENV" && "$VENV/bin/pip" install -q bpy pillow
+    "python$PYV" -m venv "$VENV" && "$VENV/bin/pip" install -q "$SPEC" pillow numpy
   fi
   # headless renders need a software OpenGL (EGL) driver
   if ! ldconfig -p 2>/dev/null | grep -q libEGL.so.1 && command -v apt-get >/dev/null; then
     (apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libegl1 libegl-mesa0 \
       libgl1-mesa-dri libgles2 libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1) >/dev/null 2>&1
   fi
-  "$PY" -c "import bpy" >/dev/null 2>&1 && echo "BSTEP_READY" || { echo "BSTEP_SETUP_FAILED"; exit 1; }
+  if "$PY" -c "import bpy" >/dev/null 2>&1; then
+    echo "BSTEP_READY $("$PY" -c 'import bpy; print(bpy.app.version_string)' 2>/dev/null)"
+  else
+    echo "BSTEP_SETUP_FAILED"; exit 1
+  fi
   exit 0
 fi
 
-if ! [ -x "$PY" ]; then echo "BSTEP_NEEDS_SETUP: run '$0 setup' (or /blender-setup)"; exit 3; fi
+export BSTEP_DIR="$WORK"
+BLENDER="${BSTEP_BLENDER:-$(conf blender)}"
+if [ -n "$BLENDER" ]; then
+  RUN="$BLENDER -b --factory-startup --python-exit-code 1 -P $DIR/bstep.py --"
+else
+  VENV="${BSTEP_VENV:-$(venv_for "$(conf bpy_version)")}"
+  PY="${BSTEP_PY:-$VENV/bin/python}"
+  if ! [ -x "$PY" ]; then echo "BSTEP_NEEDS_SETUP: run '$0 setup' (or /blender-setup)"; exit 3; fi
+  RUN="$PY $DIR/bstep.py"
+fi
+
 # streaming mode (the mod): raw output, the mod picks out the BSTEP_ lines
-if [ -n "$BSTEP_STREAM" ]; then exec "$PY" "$DIR/bstep.py" "$@" 2>&1; fi
-LOG=$(mktemp)
-"$PY" "$DIR/bstep.py" "$@" >"$LOG" 2>&1
+if [ -n "$BSTEP_STREAM" ]; then exec $RUN "$@" 2>&1; fi
+mkdir -p "$WORK"
+LOG="$WORK/last-run.log"   # overwritten each run
+$RUN "$@" >"$LOG" 2>&1
 CODE=$?
 if [ $CODE -eq 0 ]; then
   grep -E "^BSTEP_" "$LOG"
 else
   grep -E "^BSTEP_" "$LOG" | sed 's/^BSTEP_TB //' | tail -40
 fi
-rm -f "$LOG"
 exit $CODE

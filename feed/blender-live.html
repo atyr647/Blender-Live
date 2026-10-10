@@ -4,7 +4,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
   /* Layout: one screen, a studio monitor. The 3D view fills it; status on top, ticker + console at the bottom,
-     the chat feed and the notes list slide in from the right (bottom sheets on phones). */
+     the chat feed, notes and Cycles render slide in from the right (bottom sheets on phones). */
   :root {
     --void: #0c0e13;        /* monitor glass */
     --panel: #161a22;       /* bars and sheets over the view */
@@ -27,28 +27,30 @@
   .app.is-noting #view { cursor: crosshair; }
 
   .top, .bottom { position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 12px; padding-inline: 16px; }
-  .top { background: linear-gradient(var(--void), transparent); }
-  .bottom { grid-row: 3; flex-direction: column; align-items: stretch; gap: 10px; background: linear-gradient(transparent, var(--void) 35%); }
+  .top { background: linear-gradient(color-mix(in srgb, var(--void) 85%, transparent), transparent); }
+  .bottom { grid-row: 3; flex-direction: column; align-items: stretch; gap: 10px; background: linear-gradient(transparent, color-mix(in srgb, var(--void) 92%, transparent) 35%); }
 
-  .onair { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); font-weight: 700; font-size: 13px; letter-spacing: .14em; color: var(--dim); }
-  .onair .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); font-weight: 700; font-size: 12px; letter-spacing: .14em; color: var(--dim); white-space: nowrap; }
+  .pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); }
   .onair.is-live { color: var(--live); border-color: color-mix(in srgb, var(--live) 45%, var(--line)); }
   .onair.is-live .dot { background: var(--live); animation: pulse 1s steps(2, start) infinite; }
   .onair.is-paused { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, var(--line)); }
   .onair.is-paused .dot { background: var(--gold); border-radius: 1px; }
+  .lod { letter-spacing: .08em; font-family: var(--mono); font-weight: 500; }
+  .lod.is-real { color: var(--signal); border-color: color-mix(in srgb, var(--signal) 40%, var(--line)); }
   @keyframes pulse { to { visibility: hidden; } }
 
   .what { min-width: 0; flex: 1 1 200px; display: grid; gap: 2px; }
   .eyebrow { font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
   .what .label { font-size: 20px; font-weight: 700; line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; }
-  .meters { display: flex; gap: 16px; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .meters { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .meters b { color: var(--ink); font-weight: 500; }
 
   .ticker { min-width: 0; font-family: var(--mono); font-size: 13px; color: var(--signal); background: color-mix(in srgb, var(--void) 75%, transparent); border-left: 2px solid var(--signal); padding: 6px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ticker:empty::before { content: "\203A  waiting for code"; color: var(--dim); }
   .ticker .line { color: var(--dim); margin-right: 8px; }
 
-  /* the console: three labelled groups that wrap on narrow screens */
   .console { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
   .group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .group > .eyebrow { margin-right: 2px; }
@@ -62,11 +64,12 @@
   .speed { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .speed input { width: 96px; accent-color: var(--gold); }
 
-  /* side sheets: chat feed and notes */
   .sheet { position: absolute; z-index: 3; top: 76px; right: 16px; bottom: 150px; width: min(340px, calc(100% - 32px)); display: flex; flex-direction: column; background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .sheet.wide { width: min(720px, calc(100% - 32px)); }
   .sheet header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
   .sheet header h2 { margin: 0; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; }
   .sheet .body { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .sheet .body img { width: 100%; height: auto; border-radius: 4px; display: block; }
   .msg { display: grid; gap: 3px; }
   .msg .who { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
   .msg .who time { color: var(--dim); letter-spacing: 0; text-transform: none; font-family: var(--mono); margin-left: 6px; }
@@ -88,9 +91,10 @@
 
   .labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
   .labels span { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--note); color: var(--void); font: 700 12px var(--mono); box-shadow: 0 0 0 2px var(--void); }
+  .loading { position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 2; font: 12px var(--mono); color: var(--dim); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; }
 
   @media (max-width: 640px) {
-    .sheet { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; border-radius: 10px 10px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+    .sheet, .sheet.wide { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 60%; border-radius: 10px 10px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
     .speed input { width: 72px; }
   }
   @media (prefers-reduced-motion: reduce) { .onair.is-live .dot { animation: none; } }
@@ -99,16 +103,21 @@
 <div class="app" id="app">
   <canvas id="view" aria-label="Live 3D view of the model Claude is building"></canvas>
   <div class="labels" id="labels" aria-hidden="true"></div>
+  <div class="loading" id="loading" hidden></div>
 
   <header class="top">
-    <span class="onair" id="onair"><span class="dot"></span><span id="onair-text">OFF AIR</span></span>
+    <div class="badges">
+      <span class="pill onair" id="onair"><span class="dot"></span><span id="onair-text">OFF AIR</span></span>
+      <span class="pill lod" id="lod" title="Preview: a simplified copy while Claude works. Real: the full model with its real materials.">PREVIEW</span>
+    </div>
     <div class="what">
-      <span class="eyebrow">Claude is modeling</span>
+      <span class="eyebrow" id="eyebrow">Claude is modeling</span>
       <span class="label" id="label">Nothing yet</span>
     </div>
     <div class="meters">
       <span><b id="tris">0</b> tris</span>
       <span>frame <b id="frame">0</b>/<b id="frames">0</b></span>
+      <button id="render-open" type="button" hidden>Cycles render</button>
     </div>
   </header>
 
@@ -125,6 +134,11 @@
     <header><h2>Your notes</h2><button class="x" id="notes-close" type="button">Done</button></header>
     <div class="body" id="notes-body"></div>
     <footer><span class="status" id="notes-status">Click parts of the model to add notes.</span><button class="primary" id="submit" type="button" disabled>Submit to Claude</button></footer>
+  </aside>
+
+  <aside class="sheet wide" id="render" hidden aria-label="Cycles render of this step">
+    <header><h2 id="render-title">Cycles render</h2><button class="x" id="render-close" type="button">Close</button></header>
+    <div class="body"><img id="render-img" alt="Cycles render of the current step"><p class="hint" id="render-info"></p></div>
   </aside>
 
   <footer class="bottom">
@@ -144,6 +158,9 @@
       </div>
       <div class="group" role="group" aria-label="View">
         <span class="eyebrow">View</span>
+        <button id="real" type="button" aria-pressed="true" title="Full detail with real materials when a step is done">Realistic</button>
+        <button id="quality" type="button" aria-pressed="true" title="Shadows and glow. Turn off on slow phones.">Best</button>
+        <button id="sky" type="button" aria-pressed="false">Sky</button>
         <button id="wire" type="button" aria-pressed="false">Wireframe</button>
         <button id="chat-toggle" type="button" aria-pressed="false">Chat<span class="unread" id="unread" hidden></span></button>
         <button id="note-toggle" type="button" aria-pressed="false" title="Pause first, or wait until Claude is done">Add notes</button>
@@ -152,453 +169,804 @@
   </footer>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script>
-(() => {
-  const $ = id => document.getElementById(id);
-  const FRAME_MS = 750, FAST_MS = 300, TWEEN_MS = 520;
-  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem('bl:' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-    set(k, v) { try { localStorage.setItem('bl:' + k, JSON.stringify(v)); } catch {} },
-  };
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-  // ---------- three.js stage ----------
-  const canvas = $('view');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.setClearColor(0x0c0e13);
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0c0e13, 14, 40);
-  const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
-  camera.position.set(4.5, 3.4, 6);
-  const controls = new THREE.OrbitControls(camera, canvas);
-  controls.enableDamping = true;
-  controls.target.set(0, 1, 0);
-  scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x1a1d26, 0.75));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-  sun.position.set(4, 8, 5);
-  scene.add(sun);
-  const grid = new THREE.GridHelper(12, 24, 0x2f3747, 0x1c212c);
-  scene.add(grid);
-  const modelRoot = new THREE.Group();
-  scene.add(modelRoot);
+const $ = id => document.getElementById(id);
+const FRAME_MS = 750, FAST_MS = 300, TWEEN_MS = 520;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const isPhone = matchMedia('(max-width: 640px), (pointer: coarse)').matches;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('bl:' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('bl:' + k, JSON.stringify(v)); } catch {} },
+};
 
-  function resize() {
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / Math.max(1, h);
-    camera.updateProjectionMatrix();
+// ================================================================ stage
+const canvas = $('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, isPhone ? 1.5 : 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.AgXToneMapping;      // Blender's default view transform
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const VOID = new THREE.Color(0x0c0e13);
+const scene = new THREE.Scene();
+scene.background = VOID;
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 2000);
+camera.position.set(4.5, 3.4, 6);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.target.set(0, 1, 0);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+const roomEnv = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+scene.environment = roomEnv;
+let skyEnv = null, skyBackground = null;
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(4, 8, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(isPhone ? 1024 : 2048, isPhone ? 1024 : 2048);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShadowMaterial({ opacity: 0.35 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+ground.userData.isHelper = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(1, 24, 0x2f3747, 0x1c212c);
+scene.add(grid);
+const previewRoot = new THREE.Group();
+const realRoot = new THREE.Group();
+scene.add(previewRoot, realRoot);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.35, 0.4, 1.4);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  composer.setSize(w, h);
+  bloom.resolution.set(w / 2, h / 2);
+  camera.aspect = w / Math.max(1, h);
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas);
+
+// ================================================================ settings (remembered per viewer)
+const prefs = {
+  spinOn: store.get('spinOn', !reduceMotion), spinDir: store.get('spinDir', 1), spinSpeed: store.get('spinSpeed', 1.4),
+  real: store.get('real', true), best: store.get('best', !isPhone), sky: store.get('sky', false), wire: false,
+};
+function applyPrefs() {
+  controls.autoRotate = prefs.spinOn && !noting;
+  controls.autoRotateSpeed = prefs.spinSpeed * prefs.spinDir;
+  $('spin').setAttribute('aria-pressed', String(prefs.spinOn));
+  $('spin').textContent = prefs.spinOn ? 'On' : 'Off';
+  $('dir').innerHTML = prefs.spinDir > 0 ? '&#8635; Clockwise' : '&#8634; Counter';
+  $('speed').value = prefs.spinSpeed;
+  $('speed-out').textContent = Number(prefs.spinSpeed).toFixed(1) + '×';
+  $('real').setAttribute('aria-pressed', String(prefs.real));
+  $('quality').setAttribute('aria-pressed', String(prefs.best));
+  $('quality').textContent = prefs.best ? 'Best' : 'Fast';
+  $('sky').setAttribute('aria-pressed', String(prefs.sky));
+  $('wire').setAttribute('aria-pressed', String(prefs.wire));
+  renderer.shadowMap.enabled = prefs.best;
+  sun.castShadow = prefs.best;
+  ground.visible = prefs.best;
+  scene.background = prefs.sky && skyBackground ? skyBackground : VOID;
+  scene.backgroundBlurriness = 0.35;
+  for (const k of ['spinOn', 'spinDir', 'spinSpeed', 'real', 'best', 'sky']) store.set(k, prefs[k]);
+  scene.traverse(o => { if (o.isMesh && o.material) for (const m of [].concat(o.material)) if ('wireframe' in m && !o.userData.isHelper) m.wireframe = prefs.wire; });
+  updateLayer();
+}
+
+// ================================================================ decoding frames
+const b64bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+function decodeEntry(o) {   // format 3 entry -> { key, name, look, tris (three.js coords, flat) }
+  const q = new Int16Array(b64bytes(o.v).buffer);
+  const idx = o.w === 4 ? new Uint32Array(b64bytes(o.i).buffer) : new Uint16Array(b64bytes(o.i).buffer);
+  const lo = o.lo, sp = [o.hi[0] - lo[0], o.hi[1] - lo[1], o.hi[2] - lo[2]];
+  const nv = q.length / 3, pos = new Float32Array(nv * 3);
+  for (let i = 0; i < nv; i++) {
+    const x = (q[i * 3] + 32768) / 65535 * sp[0] + lo[0];
+    const y = (q[i * 3 + 1] + 32768) / 65535 * sp[1] + lo[1];
+    const z = (q[i * 3 + 2] + 32768) / 65535 * sp[2] + lo[2];
+    pos[i * 3] = x; pos[i * 3 + 1] = z; pos[i * 3 + 2] = -y;    // Blender z-up -> three.js y-up
   }
-  new ResizeObserver(resize).observe(canvas);
-
-  // Blender is z-up, three.js is y-up
-  const toThree = (src, out) => {
-    for (let i = 0; i < src.length; i += 3) { out[i] = src[i]; out[i + 1] = src[i + 2]; out[i + 2] = -src[i + 1]; }
-    return out;
-  };
-
-  // ---------- turntable settings (remembered per viewer) ----------
-  const spin = { on: store.get('spinOn', !reduceMotion), dir: store.get('spinDir', 1), speed: store.get('spinSpeed', 1.4) };
-  function applySpin() {
-    controls.autoRotate = spin.on && !noting;
-    controls.autoRotateSpeed = spin.speed * spin.dir;
-    $('spin').setAttribute('aria-pressed', String(spin.on));
-    $('spin').textContent = spin.on ? 'On' : 'Off';
-    $('dir').innerHTML = spin.dir > 0 ? '&#8635; Clockwise' : '&#8634; Counter';
-    $('speed').value = spin.speed;
-    $('speed-out').textContent = Number(spin.speed).toFixed(1) + '×';
-    store.set('spinOn', spin.on); store.set('spinDir', spin.dir); store.set('spinSpeed', spin.speed);
+  const tris = new Float32Array(idx.length * 3);
+  for (let i = 0; i < idx.length; i++) { const v = idx[i] * 3; tris[i * 3] = pos[v]; tris[i * 3 + 1] = pos[v + 1]; tris[i * 3 + 2] = pos[v + 2]; }
+  return { key: o.k, name: o.n, tris, full: o.t, look: { c: o.c, m: o.m || 0, r: o.r ?? 0.6, e: o.e || 0, ec: o.ec, a: o.a ?? 1 },
+           box: [lo[0], lo[2], -o.hi[1], o.hi[0], o.hi[2], -lo[1]], raw: o };
+}
+function decodeLegacy(o, i) {  // first-format frames: flat Blender-space triangles
+  const t = o.tris, tris = new Float32Array(t.length);
+  for (let j = 0; j < t.length; j += 3) { tris[j] = t[j]; tris[j + 1] = t[j + 2]; tris[j + 2] = -t[j + 1]; }
+  return { key: o.name + '#' + i, name: o.name, tris, full: t.length / 9, look: { c: o.color, m: 0, r: 0.6, e: 0, a: 1 }, box: null };
+}
+const decoded = new WeakMap();
+function entriesOf(frame) {
+  if (!decoded.has(frame)) decoded.set(frame, frame.format === 3 ? frame.objects.map(decodeEntry) : frame.objects.map(decodeLegacy));
+  return decoded.get(frame);
+}
+// the whole scene at a frame: deltas folded onto the last keyframe
+const states = new WeakMap();
+function stateAt(index) {
+  const f = all[index];
+  if (!f) return new Map();
+  if (states.has(f)) return states.get(f);
+  let state;
+  if (f.format !== 3 || f.kf || index === 0) state = new Map(entriesOf(f).map(e => [e.key, e]));
+  else {
+    const before = stateAt(index - 1);
+    state = new Map();
+    for (const k of f.keep || []) if (before.has(k)) state.set(k, before.get(k));
+    for (const e of entriesOf(f)) state.set(e.key, e);
   }
+  states.set(f, state);
+  return state;
+}
 
-  // ---------- turning a frame into meshes, animated from the frame before ----------
-  let isWire = false;
-  let parts = [];
-  let tweenStart = 0;
-  const triKey = (a, i) => a.slice(i, i + 9).map(v => v.toFixed(3)).join(',');
+// ================================================================ preview meshes (simplified, animated)
+let meshes = new Map();   // key -> { mesh, entry, from, to, freshCount, settled }
+const triKey = (a, i) => { let s = ''; for (let j = 0; j < 9; j++) s += a[i + j].toFixed(3) + ','; return s; };
 
-  function clearModel() {
-    for (const p of parts) { p.geo.dispose(); p.mats.forEach(m => m.dispose()); }
-    parts = [];
-    modelRoot.clear();
-  }
+function makeMaterial(look, fresh) {
+  const c = look.c || [0.7, 0.7, 0.7];
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace),
+    metalness: look.m, roughness: look.r, flatShading: true, side: THREE.DoubleSide, wireframe: prefs.wire,
+  });
+  if (look.a < 1) { mat.transparent = true; mat.opacity = Math.max(0.15, look.a); mat.depthWrite = false; }
+  if (look.e) { const ec = look.ec || c; mat.emissive = new THREE.Color().setRGB(ec[0], ec[1], ec[2], THREE.LinearSRGBColorSpace); mat.emissiveIntensity = Math.min(look.e, 4); }
+  if (fresh) { mat.userData.fresh = true; mat.userData.baseEmissive = mat.emissive.clone(); mat.userData.baseIntensity = mat.emissiveIntensity; }
+  return mat;
+}
+function meshFrom(positions, entry, fresh) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, makeMaterial(entry.look, fresh));
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.userData.name = entry.name;
+  mesh.userData.box = entry.box;
+  if (goal.focus && entry.box) fade(mesh, isContext(new THREE.Box3(new THREE.Vector3(entry.box[0], entry.box[1], entry.box[2]), new THREE.Vector3(entry.box[3], entry.box[4], entry.box[5])), goal.focus));
+  previewRoot.add(mesh);
+  return mesh;
+}
+function dropMesh(rec) { for (const m of rec.meshes) { previewRoot.remove(m); m.geometry.dispose(); m.material.dispose(); } }
 
-  function addMesh(positions, color, isFresh, name) {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color[0], color[1], color[2]), side: THREE.DoubleSide });
-    if (isFresh) mat.emissive = new THREE.Color(0xffc93a);
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0x0b0d12, wireframe: true, transparent: true, opacity: .55 });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.userData.name = name;
-    const wire = new THREE.Mesh(geo, wireMat);
-    wire.visible = isWire;
-    wire.raycast = () => {};
-    modelRoot.add(mesh, wire);
-    return { geo, mats: [mat, wireMat], wire };
-  }
-
-  function showFrame(frame, prev) {
-    clearModel();
-    const prevEntries = new Map(), prevKeys = new Set(), seen = new Map();
-    for (const o of prev ? prev.objects : []) {
-      const k = seen.get(o.name) || 0; seen.set(o.name, k + 1);
-      prevEntries.set(o.name + '#' + k, o.tris);
-      for (let i = 0; i + 8 < o.tris.length; i += 9) prevKeys.add(o.name + '|' + triKey(o.tris, i));
+const sameLook = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function sameEntry(a, b) {   // identical geometry and material: nothing to redraw
+  if (a === b) return true;
+  if (!a || !b || a.tris.length !== b.tris.length || !sameLook(a.look, b.look)) return false;
+  if (a.raw && b.raw) return a.raw.v === b.raw.v && a.raw.i === b.raw.i && String(a.raw.lo) === String(b.raw.lo) && String(a.raw.hi) === String(b.raw.hi);
+  return false;
+}
+const stats = { rebuilt: 0, frames: 0 };
+window.blStats = () => ({ ...stats, parts: meshes.size });   // for checking the feed stays calm
+function showState(state, prevState, tweenMs) {
+  const now = performance.now();
+  stats.frames++;
+  for (const [k, rec] of meshes) if (!state.has(k)) { dropMesh(rec); meshes.delete(k); }
+  let added = false;
+  for (const [k, e] of state) {
+    const rec = meshes.get(k);
+    if (rec && sameEntry(rec.entry, e)) { rec.entry = e; continue; }   // unchanged: leave it be
+    added = true;
+    stats.rebuilt++;
+    const before = rec ? rec.entry : prevState && prevState.get(k);
+    if (rec) { dropMesh(rec); meshes.delete(k); }
+    const base = { entry: e, t0: now, dur: tweenMs };
+    if (before && before.tris.length === e.tris.length && sameLook(before.look, e.look)) {
+      const m = meshFrom(before.tris.slice(), e, false);   // same shape: slide every vertex
+      meshes.set(k, { ...base, meshes: [m], from: before.tris, to: e.tris });
+      continue;
     }
-    const cur = new Map();
-    for (const o of frame.objects) {
-      const k = cur.get(o.name) || 0; cur.set(o.name, k + 1);
-      const before = prevEntries.get(o.name + '#' + k);
-      if (prev && before && before.length === o.tris.length) {
-        // same shape: slide every vertex from where it was
-        const to = toThree(o.tris, new Float32Array(o.tris.length));
-        const from = toThree(before, new Float32Array(before.length));
-        parts.push({ ...addMesh(from.slice(), o.color, false, o.name), from, to });
-        continue;
-      }
-      // otherwise: old triangles stay, new ones build up from the bottom
-      const old = [], fresh = [];
-      for (let i = 0; i + 8 < o.tris.length; i += 9) {
-        (prev && prevKeys.has(o.name + '|' + triKey(o.tris, i)) ? old : fresh).push(o.tris.slice(i, i + 9));
-      }
-      if (old.length) parts.push(addMesh(toThree(old.flat(), new Float32Array(old.length * 9)), o.color, false, o.name));
-      if (fresh.length) {
-        fresh.sort((a, b) => Math.min(a[2], a[5], a[8]) - Math.min(b[2], b[5], b[8]));
-        const m = addMesh(toThree(fresh.flat(), new Float32Array(fresh.length * 9)), o.color, true, o.name);
-        m.geo.setDrawRange(0, 0);
-        parts.push({ ...m, freshCount: fresh.length * 3 });
-      }
+    const known = new Set();
+    if (before) for (let i = 0; i + 8 < before.tris.length; i += 9) known.add(triKey(before.tris, i));
+    const old = [], fresh = [];
+    for (let i = 0; i + 8 < e.tris.length; i += 9) (before && known.has(triKey(e.tris, i)) ? old : fresh).push(i);
+    // a part that was only re-simplified (almost nothing in common, same place): swap it, no build-up
+    if (before && old.length < 0.3 * (e.tris.length / 9)) { meshes.set(k, { ...base, meshes: [meshFrom(e.tris, e, false)] }); continue; }
+    const pack = list => { const out = new Float32Array(list.length * 9); list.forEach((i, n) => out.set(e.tris.subarray(i, i + 9), n * 9)); return out; };
+    const out = { ...base, meshes: [] };
+    if (old.length) out.meshes.push(meshFrom(pack(old), e, false));
+    if (fresh.length) {
+      fresh.sort((a, b) => Math.min(e.tris[a + 1], e.tris[a + 4], e.tris[a + 7]) - Math.min(e.tris[b + 1], e.tris[b + 4], e.tris[b + 7]));
+      const animate = prevState !== null;
+      const m = meshFrom(pack(fresh), e, animate);
+      if (animate) { m.geometry.setDrawRange(0, 0); out.freshCount = fresh.length * 3; out.fresh = m; }
+      out.meshes.push(m);
     }
-    tweenStart = performance.now();
-    frameTo(frame);
+    meshes.set(k, out);
   }
+  if (added || !prevState) frameTo(state);
+}
 
-  function animateParts(now) {
-    const t = Math.min(1, (now - tweenStart) / (reduceMotion ? 1 : TWEEN_MS));
+const GOLD = new THREE.Color(0xffc93a);
+function animatePreview(now) {
+  for (const rec of meshes.values()) {
+    if (rec.settled && !rec.freshCount) continue;
+    const dur = reduceMotion ? 1 : rec.dur || TWEEN_MS;
+    const t = Math.min(1, (now - rec.t0) / dur);
     const e = t * t * (3 - 2 * t);
-    const glow = Math.max(0, 1 - Math.max(0, (now - tweenStart - TWEEN_MS) / 900));
-    for (const p of parts) {
-      if (p.from && !p.settled) {
-        const pos = p.geo.attributes.position.array;
-        for (let i = 0; i < pos.length; i++) pos[i] = p.from[i] + (p.to[i] - p.from[i]) * e;
-        p.geo.attributes.position.needsUpdate = true;
-        p.geo.computeVertexNormals();
-        p.geo.computeBoundingSphere();
-        p.settled = t >= 1;
+    const glow = Math.max(0, 1 - Math.max(0, (now - rec.t0 - dur) / 900));
+    if (rec.from && !rec.settled) {
+      const geo = rec.meshes[0].geometry, pos = geo.attributes.position.array;
+      for (let i = 0; i < pos.length; i++) pos[i] = rec.from[i] + (rec.to[i] - rec.from[i]) * e;
+      geo.attributes.position.needsUpdate = true;
+      geo.computeVertexNormals(); geo.computeBoundingSphere();
+      rec.settled = t >= 1;
+    } else if (!rec.from) rec.settled = true;
+    if (rec.freshCount) {
+      rec.fresh.geometry.setDrawRange(0, Math.ceil((rec.freshCount / 3) * e) * 3);
+      const mat = rec.fresh.material;
+      mat.emissive.copy(mat.userData.baseEmissive).lerp(GOLD, glow);
+      mat.emissiveIntensity = Math.max(mat.userData.baseIntensity, 0.9 * glow);
+      if (glow === 0) rec.freshCount = 0;
+    }
+  }
+}
+
+// ================================================================ camera, focus, sun
+const goal = { center: new THREE.Vector3(0, 1, 0), radius: 2, focus: null };
+let modelBox = new THREE.Box3(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 2, 1));
+function frameTo(state) {
+  const box = new THREE.Box3();
+  for (const e of state.values()) if (e.box) box.union(new THREE.Box3(new THREE.Vector3(e.box[0], e.box[1], e.box[2]), new THREE.Vector3(e.box[3], e.box[4], e.box[5])));
+  else for (let i = 0; i < e.tris.length; i += 3) box.expandByPoint(new THREE.Vector3(e.tris[i], e.tris[i + 1], e.tris[i + 2]));
+  if (box.isEmpty()) return;
+  modelBox = box;
+  aimAt(goal.focus || box);
+  const size = box.getSize(new THREE.Vector3()), r = Math.max(size.x, size.z, 2) * 1.4;
+  const c = box.getCenter(new THREE.Vector3());
+  ground.position.set(c.x, Math.min(0, box.min.y) - 0.001, c.z); ground.scale.setScalar(r * 2.5);
+  grid.position.copy(ground.position); grid.scale.setScalar(r * 2.5);
+  // the sun's shadow covers the whole model
+  const R = box.getBoundingSphere(new THREE.Sphere()).radius;
+  const dir = sun.userData.dir || new THREE.Vector3(0.45, 0.8, 0.4).normalize();
+  sun.target.position.copy(c); sun.position.copy(c).addScaledVector(dir, R * 3);
+  Object.assign(sun.shadow.camera, { left: -R, right: R, top: R, bottom: -R, near: 0.1, far: R * 6 });
+  sun.shadow.camera.updateProjectionMatrix();
+  camera.far = Math.max(2000, R * 60); camera.near = Math.max(0.01, R / 2000); camera.updateProjectionMatrix();
+}
+function aimAt(box) {
+  goal.center.copy(box.getCenter(new THREE.Vector3()));
+  const r = Math.max(0.4, box.getSize(new THREE.Vector3()).length() / 2);
+  if (Math.abs(r - goal.radius) / goal.radius > 0.12) goal.radius = r;
+}
+let dragging = false;
+controls.addEventListener('start', () => { dragging = true; });
+controls.addEventListener('end', () => { setTimeout(() => { dragging = false; }, 2500); });
+function followCamera() {
+  if (noting) return;
+  controls.target.lerp(goal.center, 0.06);
+  const vfov = THREE.MathUtils.degToRad(camera.fov);
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  const want = (goal.radius / Math.sin(Math.min(vfov, hfov) / 2)) * 1.12;
+  const off = camera.position.clone().sub(controls.target);
+  const d = off.length();
+  if (Math.abs(d - want) > want * 0.002 && !dragging) off.setLength(d + (want - d) * 0.05);
+  camera.position.copy(controls.target).add(off);
+}
+
+// focus: frames may name a box to look at; everything big or outside it turns see-through
+function focusBoxOf(frame) {
+  const f = frame && frame.focus;
+  if (!f) return null;
+  return new THREE.Box3(new THREE.Vector3(f.lo[0], f.lo[2], -f.hi[1]), new THREE.Vector3(f.hi[0], f.hi[2], -f.lo[1]));
+}
+function isContext(box, focus) {
+  if (!focus || !box) return false;
+  const fv = focus.getSize(new THREE.Vector3()), bv = box.getSize(new THREE.Vector3());
+  return !box.intersectsBox(focus) || bv.x * bv.y * bv.z > 8 * Math.max(fv.x * fv.y * fv.z, 1e-6);
+}
+function fade(mesh, on) {
+  const mats = [].concat(mesh.material);
+  mats.forEach(m => {
+    if (on && !m.userData.faded) { m.userData.faded = { t: m.transparent, o: m.opacity, d: m.depthWrite }; m.transparent = true; m.opacity = Math.min(m.opacity, 0.12); m.depthWrite = false; m.needsUpdate = true; }
+    if (!on && m.userData.faded) { const f = m.userData.faded; m.transparent = f.t; m.opacity = f.o; m.depthWrite = f.d; delete m.userData.faded; m.needsUpdate = true; }
+  });
+  mesh.castShadow = !on;
+}
+function applyFocus() {
+  const focus = goal.focus;
+  for (const rec of meshes.values()) for (const m of rec.meshes) {
+    const b = m.userData.box;
+    fade(m, isContext(b && new THREE.Box3(new THREE.Vector3(b[0], b[1], b[2]), new THREE.Vector3(b[3], b[4], b[5])), focus));
+  }
+  realRoot.traverse(o => { if (o.isMesh) { const b = new THREE.Box3().setFromObject(o); fade(o, isContext(b, focus)); } });
+  if (focus) aimAt(focus); else aimAt(modelBox);
+}
+
+// ================================================================ realistic layer: glTF per step, sky
+const BLD = (window.BLD = window.BLD || {});
+const fileUrls = new Map();     // file key -> [urls of its .js parts]
+const manifests = new Map();    // step -> manifest doc
+const fileScenes = new Map();   // file key -> Promise<THREE.Group> (the parsed glTF scene)
+const renders = new Map();      // step -> render doc
+let skyDoc = null, skyLoadedKey = null;
+
+function loadScript(url) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url; s.async = true;
+    s.onload = () => { s.remove(); res(); };
+    s.onerror = () => { s.remove(); rej(new Error('could not load ' + url)); };
+    document.head.append(s);
+  });
+}
+async function fetchPacked(key, urls) {  // .js parts -> inflated bytes
+  for (let i = 0; i < urls.length; i++) if (!BLD[key + '/' + i]) await loadScript(urls[i]);
+  let b64 = '';
+  for (let i = 0; i < urls.length; i++) { b64 += BLD[key + '/' + i]; delete BLD[key + '/' + i]; }
+  const packed = b64bytes(b64);
+  const stream = new Blob([packed]).stream().pipeThrough(new DecompressionStream('deflate'));
+  return new Response(stream).arrayBuffer();
+}
+const gltfLoader = new GLTFLoader();
+function parseGltf(buffer) {
+  return new Promise((res, rej) => {
+    // load embedded textures through <img> (blob: URLs), not fetch
+    const cib = window.createImageBitmap;
+    window.createImageBitmap = undefined;
+    gltfLoader.parse(buffer, '', g => { window.createImageBitmap = cib; res(g.scene); }, e => { window.createImageBitmap = cib; rej(e); });
+  });
+}
+function sceneOfFile(key) {
+  if (!fileScenes.has(key)) {
+    const urls = fileUrls.get(key);
+    if (!urls) return null;
+    fileScenes.set(key, fetchPacked(key, urls).then(parseGltf).then(sc => { sc.updateMatrixWorld(true); return sc; }));
+  }
+  return fileScenes.get(key);
+}
+const sanitize = n => THREE.PropertyBinding.sanitizeNodeName(n);
+
+let realStep = null, realBuilding = null;
+async function buildReal(step) {
+  const man = manifests.get(step);
+  if (!man) return false;
+  const names = Object.keys(man.objects || {});
+  const wanted = new Set(names.map(sanitize));
+  const needed = [...new Set(Object.values(man.objects || {}))];
+  if (needed.some(k => !fileUrls.has(k))) return false;
+  showLoading(`Loading full detail for step ${step}...`);
+  const scenes = new Map();
+  for (const k of needed) scenes.set(k, await sceneOfFile(k));
+  const group = new THREE.Group();
+  let tris = 0;
+  for (const [name, key] of Object.entries(man.objects)) {
+    const sc = scenes.get(key);
+    const node = sc && sc.getObjectByName(sanitize(name));
+    if (!node) continue;
+    const copy = node.clone(true);
+    copy.children = copy.children.filter(ch => !wanted.has(ch.name));   // its own children come from their own files
+    node.matrixWorld.decompose(copy.position, copy.quaternion, copy.scale);
+    copy.traverse(o => {
+      if (o.isMesh) {
+        o.castShadow = o.receiveShadow = true; o.userData.name = name;
+        const mats = [].concat(o.material).map(m => m.clone());   // own copies: fading one part never fades another
+        o.material = Array.isArray(o.material) ? mats : mats[0];
+        const g = o.geometry; tris += (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1);
       }
-      if (p.freshCount) {
-        p.geo.setDrawRange(0, Math.ceil((p.freshCount / 3) * e) * 3);
-        p.mats[0].emissiveIntensity = 0.85 * glow;
-      }
+    });
+    group.add(copy);
+  }
+  hideLoading();
+  return { group, tris };
+}
+async function showReal(step) {
+  if (realStep === step || realBuilding === step) return;
+  realBuilding = step;
+  try {
+    const built = await buildReal(step);
+    if (!built || realBuilding !== step) return;
+    for (const ch of [...realRoot.children]) { realRoot.remove(ch); ch.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => m.dispose()); }); }
+    realRoot.add(built.group);
+    realRoot.userData.tris = built.tris;
+    realStep = step;
+    applyPrefs();
+    applyFocus();
+  } catch (err) {
+    hideLoading();
+    report('glTF step ' + step + ': ' + (err && err.message || err));
+  } finally { if (realBuilding === step) realBuilding = null; }
+}
+// which layer shows: the full model once a step has finished playing, the preview while it builds
+function lastFrameOfStep(f) { return f && !all.some(g => g.step === f.step && g.seq > f.seq); }
+let quietSince = 0;
+function updateLayer() {
+  const settled = queue.length === 0 && performance.now() - quietSince > 1500;   // no flip-flopping between frames
+  const atEnd = shown && settled && lastFrameOfStep(shown) && !replaying;
+  const want = prefs.real && atEnd && shown.step != null ? shown.step : null;
+  if (want != null && manifests.has(want)) showReal(want);
+  const realOn = want != null && realStep === want;
+  realRoot.visible = realOn;
+  previewRoot.visible = !realOn;
+  const lod = $('lod');
+  lod.classList.toggle('is-real', realOn);
+  lod.textContent = realOn ? `REAL · ${fmt(realRoot.userData.tris || 0)} tris`
+    : shown && shown.ptris && shown.ptris < shown.tris ? `PREVIEW · ${fmt(shown.ptris)} of ${fmt(shown.tris)}` : 'PREVIEW';
+}
+const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1e4 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
+
+async function loadSky(doc) {
+  if (!doc || skyLoadedKey === doc.key || !fileUrls.has(doc.key)) return;
+  skyLoadedKey = doc.key;
+  try {
+    const buf = await fetchPacked(doc.key, fileUrls.get(doc.key));
+    const tex = new RGBELoader().parse(buf);
+    const sunLight = extractSun(tex);     // the sun disc becomes a real light; the rest lights softly
+    const dt = new THREE.DataTexture(tex.data, tex.width, tex.height, THREE.RGBAFormat, tex.type);
+    dt.colorSpace = THREE.LinearSRGBColorSpace; dt.mapping = THREE.EquirectangularReflectionMapping;
+    dt.flipY = true; dt.needsUpdate = true;
+    if (skyEnv) skyEnv.dispose();
+    skyEnv = pmrem.fromEquirectangular(dt).texture;
+    skyBackground = dt;
+    scene.environment = skyEnv;
+    sun.userData.dir = sunLight.dir;
+    sun.intensity = sunLight.intensity;
+    // match Blender's colour management for this scene
+    renderer.toneMappingExposure = Math.pow(2, doc.exposure || 0);
+    renderer.toneMapping = { Standard: THREE.NoToneMapping, Filmic: THREE.ACESFilmicToneMapping, 'Khronos PBR Neutral': THREE.NeutralToneMapping }[doc.view] ?? THREE.AgXToneMapping;
+    bloom.threshold = Math.max(1, sunLight.surface * 2) / renderer.toneMappingExposure;
+    bloom.strength = 0.45;
+    frameTo(stateAt(all.indexOf(shown)));
+    applyPrefs();
+  } catch (err) { report('sky: ' + (err && err.message || err)); }
+}
+function extractSun(tex) {
+  // Clip the brightest pixels (the sun disc) out of the sky and add their energy up as
+  // one directional light: the same light Cycles gets, but with crisp shadows and no blow-out.
+  const { data, width, height } = tex;
+  const isHalf = data instanceof Uint16Array;
+  const get = isHalf ? v => THREE.DataUtils.fromHalfFloat(v) : v => v;
+  const set = isHalf ? v => THREE.DataUtils.toHalfFloat(v) : v => v;
+  const lums = [];
+  for (let i = 0; i < data.length; i += 4 * 97) lums.push(get(data[i]) * 0.2126 + get(data[i + 1]) * 0.7152 + get(data[i + 2]) * 0.0722);
+  lums.sort((a, b) => a - b);
+  const median = lums[lums.length >> 1] || 1;
+  const cap = Math.max(median * 40, 4);
+  let energy = 0, sx = 0, sy = 0, sz = 0, best = -1, bx = 0, by = 0;
+  for (let y = 0; y < height; y++) {
+    const lat = Math.PI / 2 - ((y + 0.5) / height) * Math.PI;
+    const dOmega = (2 * Math.PI / width) * (Math.PI / height) * Math.cos(lat);
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const r = get(data[i]), g = get(data[i + 1]), b = get(data[i + 2]);
+      const l = r * 0.2126 + g * 0.7152 + b * 0.0722;
+      if (l > best) { best = l; bx = x; by = y; }
+      if (l <= cap) continue;
+      const k = cap / l, excess = (l - cap) * dOmega;
+      const a = ((x + 0.5) / width - 0.5) * Math.PI * 2;   // three.js equirect: u = 0.5 looks along +X
+      sx += Math.cos(a) * Math.cos(lat) * excess; sy += Math.sin(lat) * excess; sz += Math.sin(a) * Math.cos(lat) * excess;
+      energy += excess;
+      data[i] = set(r * k); data[i + 1] = set(g * k); data[i + 2] = set(b * k);
     }
   }
-
-  // ease the camera toward the model when it grows or moves
-  const goal = { center: new THREE.Vector3(0, 1, 0), radius: 2 };
-  function frameTo(frame) {
-    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
-    for (const o of frame.objects) for (let i = 0; i < o.tris.length; i += 3) {
-      for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], o.tris[i + k]); hi[k] = Math.max(hi[k], o.tris[i + k]); }
-    }
-    if (lo[0] === Infinity) return;
-    goal.center.set((lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2, -(lo[1] + hi[1]) / 2);
-    const r = Math.max(0.8, Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2);
-    if (Math.abs(r - goal.radius) / goal.radius > 0.12) goal.radius = r;
-    grid.position.y = Math.min(0, lo[2]);
+  let dir;
+  if (energy > 0) dir = new THREE.Vector3(sx, sy, sz).normalize();
+  else {
+    const a = ((bx + 0.5) / width - 0.5) * Math.PI * 2, lat = Math.PI / 2 - ((by + 0.5) / height) * Math.PI;
+    dir = new THREE.Vector3(Math.cos(a) * Math.cos(lat), Math.sin(lat), Math.sin(a) * Math.cos(lat));
   }
+  if (dir.y < 0.15) { dir.y = 0.15; dir.normalize(); }
+  const intensity = energy > 0 ? energy : median * 2;
+  // how bright a white, sunlit surface gets: glow only kicks in above that
+  return { dir, intensity, surface: (intensity / Math.PI + median) * 1.2 };
+}
 
-  let dragging = false;
-  controls.addEventListener('start', () => { dragging = true; });
-  controls.addEventListener('end', () => { setTimeout(() => { dragging = false; }, 2500); });
-  function followCamera() {
-    if (noting) return;  // hold still while the viewer places notes
-    controls.target.lerp(goal.center, 0.06);
-    // fit the model in whichever field of view is narrower (phones are tall)
-    const vfov = THREE.MathUtils.degToRad(camera.fov);
-    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
-    const want = (goal.radius / Math.sin(Math.min(vfov, hfov) / 2)) * 1.12;
-    const off = camera.position.clone().sub(controls.target);
-    const d = off.length();
-    if (Math.abs(d - want) > 0.01 && !dragging) off.setLength(d + (want - d) * 0.05);
-    camera.position.copy(controls.target).add(off);
-  }
-
-  // ---------- the stream: frames arrive from the database, play in order ----------
-  let all = [], queue = [], shown = null, shownAt = 0, lastArrival = 0, paused = false;
-  let noting = false;
-
-  function play(now) {
-    if (paused || noting) return;
-    if (queue.length && now - shownAt >= (queue.length > 8 ? FAST_MS : FRAME_MS)) {
-      const next = queue.shift();
-      showFrame(next, shown);
-      shown = next; shownAt = now;
-      paintStatus();
-    }
-  }
-
-  function paintStatus() {
-    const live = !paused && (queue.length > 0 || performance.now() - lastArrival < 6000);
-    const onair = $('onair');
-    onair.classList.toggle('is-live', live);
-    onair.classList.toggle('is-paused', paused);
-    $('onair-text').textContent = paused
-      ? (queue.length ? `PAUSED · ${queue.length} waiting` : 'PAUSED')
-      : live ? 'LIVE' : all.length ? 'IDLE' : 'OFF AIR';
-    $('empty').hidden = all.length > 0;
-    $('pause').textContent = paused ? 'Play' : 'Pause';
-    $('pause').setAttribute('aria-pressed', String(paused));
-    // notes can be added while paused, or once the build has finished playing
-    $('note-toggle').disabled = !shown || (!noting && !paused && queue.length > 0);
-    if (!shown) return;
-    $('label').textContent = shown.label || 'Untitled step';
-    $('tris').textContent = shown.tris;
-    $('frame').textContent = shown.seq + 1;
-    $('frames').textContent = all.length;
-    const ticker = $('ticker');
-    ticker.textContent = '';
-    if (shown.code) {
-      const ln = document.createElement('span');
-      ln.className = 'line';
-      ln.textContent = '› ' + (shown.line ? 'line ' + shown.line : '');
-      ticker.append(ln, document.createTextNode(shown.code));
-    }
-  }
-  setInterval(paintStatus, 1000);
-
-  // ---------- notes: click parts of the model, give each a reason, submit ----------
-  let notes = [];   // { id, name, point, reason }
-  let nextNoteId = 1;
-  const raycaster = new THREE.Raycaster();
-  let downAt = null;
-
-  function setNoting(on) {
-    noting = on;
-    $('app').classList.toggle('is-noting', on);
-    $('note-toggle').setAttribute('aria-pressed', String(on));
-    $('notes').hidden = !on;
-    if (on) {
-      $('chat').hidden = true;
-      $('chat-toggle').setAttribute('aria-pressed', 'false');
-    } else {
-      setChat(chatOpen);
-    }
-    applySpin();
-    renderNotes();
+// ================================================================ stream playback
+let all = [], queue = [], shown = null, shownAt = 0, lastArrival = 0, paused = false, replaying = false;
+let noting = false;
+function playFrame(f) {
+  const i = all.indexOf(f);
+  const prevState = shown && i > 0 ? stateAt(i - 1) : null;   // animate from the frame before, unless jumping
+  const focus = focusBoxOf(f);
+  const focusChanged = String(focus && focus.min.toArray().concat(focus.max.toArray())) !== String(goal.focus && goal.focus.min.toArray().concat(goal.focus.max.toArray()));
+  goal.focus = focus;
+  const interval = queue.length > 8 ? FAST_MS : FRAME_MS;
+  showState(stateAt(i), prevState, Math.min(TWEEN_MS, interval * 0.8));
+  if (focusChanged) applyFocus(); else aimAt(goal.focus || modelBox);
+  shown = f;
+}
+function play(now) {
+  if (paused || noting) return;
+  if (queue.length && now - shownAt >= (queue.length > 8 ? FAST_MS : FRAME_MS)) {
+    playFrame(queue.shift());
+    shownAt = now;
+    quietSince = now;
+    if (!queue.length) replaying = false;
     paintStatus();
   }
+}
+function paintStatus() {
+  const live = !paused && (queue.length > 0 || performance.now() - lastArrival < 6000);
+  const onair = $('onair');
+  onair.classList.toggle('is-live', live);
+  onair.classList.toggle('is-paused', paused);
+  $('onair-text').textContent = paused ? (queue.length ? `PAUSED · ${queue.length} waiting` : 'PAUSED')
+    : live ? 'LIVE' : all.length ? 'IDLE' : 'OFF AIR';
+  $('empty').hidden = all.length > 0;
+  $('pause').textContent = paused ? 'Play' : 'Pause';
+  $('pause').setAttribute('aria-pressed', String(paused));
+  $('note-toggle').disabled = !shown || (!noting && !paused && queue.length > 0);
+  updateLayer();
+  if (!shown) return;
+  $('label').textContent = shown.label || 'Untitled step';
+  $('eyebrow').textContent = shown.step ? `Claude is modeling · step ${shown.step}` : 'Claude is modeling';
+  $('tris').textContent = fmt(shown.tris || 0);
+  $('frame').textContent = shown.seq + 1;
+  $('frames').textContent = all.length;
+  $('render-open').hidden = !renders.has(shown.step);
+  const ticker = $('ticker');
+  ticker.textContent = '';
+  if (shown.code) {
+    const ln = document.createElement('span');
+    ln.className = 'line';
+    ln.textContent = '› ' + (shown.line ? 'line ' + shown.line : '');
+    ticker.append(ln, document.createTextNode(shown.code));
+  }
+}
+setInterval(paintStatus, 1000);
+function showLoading(t) { $('loading').textContent = t; $('loading').hidden = false; }
+function hideLoading() { $('loading').hidden = true; }
 
-  canvas.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
-  canvas.addEventListener('pointerup', e => {
-    if (!noting || !downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 5) return;
-    const r = canvas.getBoundingClientRect();
-    raycaster.setFromCamera({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }, camera);
-    const hit = raycaster.intersectObjects(modelRoot.children, false)[0];
-    if (!hit) { $('notes-status').textContent = 'That missed the model. Click on a part.'; return; }
-    notes.push({ id: nextNoteId++, name: hit.object.userData.name || 'part', point: hit.point.clone(), reason: '' });
-    renderNotes(true);
+// ================================================================ notes
+let notes = [], nextNoteId = 1, downAt = null;
+const raycaster = new THREE.Raycaster();
+function setNoting(on) {
+  noting = on;
+  $('app').classList.toggle('is-noting', on);
+  $('note-toggle').setAttribute('aria-pressed', String(on));
+  $('notes').hidden = !on;
+  if (on) { $('chat').hidden = true; $('render').hidden = true; $('chat-toggle').setAttribute('aria-pressed', 'false'); }
+  else setChat(chatOpen);
+  applyPrefs(); renderNotes(); paintStatus();
+}
+canvas.addEventListener('pointerdown', e => { downAt = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', e => {
+  if (!noting || !downAt || Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 5) return;
+  const r = canvas.getBoundingClientRect();
+  raycaster.setFromCamera({ x: ((e.clientX - r.left) / r.width) * 2 - 1, y: -((e.clientY - r.top) / r.height) * 2 + 1 }, camera);
+  const root = realRoot.visible ? realRoot : previewRoot;
+  const hit = raycaster.intersectObjects(root.children, true).find(h => !(h.object.material && h.object.material.userData && h.object.material.userData.faded));
+  if (!hit) { $('notes-status').textContent = 'That missed the model. Click on a part.'; return; }
+  notes.push({ id: nextNoteId++, name: hit.object.userData.name || hit.object.name || 'part', point: hit.point.clone(), reason: '' });
+  renderNotes(true);
+});
+function renderNotes(focusLast) {
+  const body = $('notes-body');
+  body.textContent = '';
+  if (!notes.length) {
+    const p = document.createElement('p'); p.className = 'hint';
+    p.textContent = 'Click any part of the model to pin a note to it. Add a reason for each pin, then submit them together. Drag to turn the model.';
+    body.append(p);
+  }
+  notes.forEach((n, i) => {
+    const card = document.createElement('div'); card.className = 'note';
+    const head = document.createElement('div'); head.className = 'head';
+    const pin = document.createElement('span'); pin.className = 'pin'; pin.textContent = i + 1;
+    const name = document.createElement('span'); name.className = 'name'; name.textContent = n.name;
+    const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'x'; rm.textContent = 'Remove';
+    rm.addEventListener('click', () => { notes = notes.filter(x => x !== n); renderNotes(); });
+    head.append(pin, name, rm);
+    const ta = document.createElement('textarea');
+    ta.id = 'note-' + n.id; ta.placeholder = 'What should change here, and why?'; ta.value = n.reason;
+    ta.setAttribute('aria-label', `Reason for note ${i + 1} on ${n.name}`);
+    ta.addEventListener('input', () => { n.reason = ta.value; updateSubmit(); });
+    card.append(head, ta); body.append(card);
   });
+  if (focusLast && notes.length) body.lastElementChild.querySelector('textarea').focus();
+  updateSubmit();
+}
+function updateSubmit(message) {
+  const missing = notes.filter(n => !n.reason.trim()).length;
+  $('submit').disabled = !notes.length || missing > 0;
+  $('notes-status').textContent = message || (!notes.length ? 'Click parts of the model to add notes.'
+    : missing ? `${missing} note${missing > 1 ? 's' : ''} still need${missing > 1 ? '' : 's'} a reason.`
+    : `${notes.length} note${notes.length > 1 ? 's' : ''} ready.`);
+}
+function paintPins() {
+  const box = $('labels'), w = canvas.clientWidth, h = canvas.clientHeight;
+  while (box.children.length > notes.length) box.lastChild.remove();
+  notes.forEach((n, i) => {
+    let el = box.children[i];
+    if (!el) { el = document.createElement('span'); box.append(el); }
+    el.textContent = i + 1;
+    const p = n.point.clone().project(camera);
+    el.style.left = ((p.x + 1) / 2) * w + 'px'; el.style.top = ((1 - p.y) / 2) * h + 'px';
+    el.hidden = p.z > 1;
+  });
+}
+let comments = null;
+async function submitNotes() {
+  $('submit').disabled = true;
+  const at = shown ? `frame ${shown.seq + 1}, step ${shown.step || ''} "${shown.label}"` : 'the model';
+  const lines = notes.map((n, i) => `${i + 1}. ${n.name}: ${n.reason.trim()}`);
+  const text = `Notes from the Blender Live feed (${at}):\n${lines.join('\n')}`.slice(0, 3900);
+  try {
+    comments = comments || await claude.use('comments');
+    if (!comments) throw { code: 'unavailable' };
+    const anchor = await comments.anchorFor(canvas);
+    let can = 'off';
+    try { can = await comments.canSendToClaude(); } catch {}
+    if (can === 'available') await comments.sendToClaude({ anchor, text });
+    else await comments.create({ anchor, text });
+    notes = []; renderNotes();
+    updateSubmit(can === 'available' ? 'Sent to Claude. Its reply shows up in the chat.' : 'Saved as a comment. Tell Claude in chat to read your notes.');
+  } catch (err) {
+    const code = err && err.code;
+    updateSubmit(code === 'rate_limited' ? 'Too many sends in a row. Wait a moment, then submit again.'
+      : code === 'consent_required' ? 'Allow comments for this page when asked, then submit again.'
+      : 'Could not send. Copy your notes into the chat instead.');
+  }
+}
 
-  function renderNotes(focusLast) {
-    const body = $('notes-body');
-    body.textContent = '';
-    if (!notes.length) {
-      const p = document.createElement('p');
-      p.className = 'hint';
-      p.textContent = 'Click any part of the model to pin a note to it. Add a reason for each pin, then submit them together. Drag to turn the model.';
-      body.append(p);
-    }
-    notes.forEach((n, i) => {
-      const card = document.createElement('div');
-      card.className = 'note';
-      const head = document.createElement('div');
-      head.className = 'head';
-      const pin = document.createElement('span'); pin.className = 'pin'; pin.textContent = i + 1;
-      const name = document.createElement('span'); name.className = 'name'; name.textContent = n.name;
-      const rm = document.createElement('button'); rm.type = 'button'; rm.className = 'x'; rm.textContent = 'Remove';
-      rm.addEventListener('click', () => { notes = notes.filter(x => x !== n); renderNotes(); });
-      head.append(pin, name, rm);
-      const ta = document.createElement('textarea');
-      ta.id = 'note-' + n.id;
-      ta.placeholder = 'What should change here, and why?';
-      ta.value = n.reason;
-      ta.setAttribute('aria-label', `Reason for note ${i + 1} on ${n.name}`);
-      ta.addEventListener('input', () => { n.reason = ta.value; updateSubmit(); });
-      card.append(head, ta);
-      body.append(card);
-    });
-    if (focusLast && notes.length) body.lastElementChild.querySelector('textarea').focus();
-    updateSubmit();
+// ================================================================ chat feed
+let chatOpen = store.get('chatOpen', false), chatSeen = store.get('chatSeen', 0), chatLatest = 0;
+function setChat(open) {
+  chatOpen = open; store.set('chatOpen', open);
+  $('chat').hidden = !open || noting;
+  $('chat-toggle').setAttribute('aria-pressed', String(open && !noting));
+  if (open) { chatSeen = chatLatest; store.set('chatSeen', chatSeen); }
+  $('unread').hidden = open || chatLatest <= chatSeen;
+}
+function renderChat(msgs) {
+  const body = $('chat-body');
+  const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+  body.textContent = '';
+  if (!msgs.length) { const p = document.createElement('p'); p.className = 'hint'; p.textContent = "Claude's notes about what it's building show up here."; body.append(p); }
+  for (const m of msgs) {
+    const div = document.createElement('div'); div.className = 'msg';
+    const who = document.createElement('span'); who.className = 'who'; who.textContent = 'Claude';
+    if (m.at) { const t = document.createElement('time'); t.dateTime = m.at; t.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); who.append(t); }
+    const p = document.createElement('p'); p.textContent = String(m.text || '');
+    div.append(who, p); body.append(div);
   }
-
-  function updateSubmit(message) {
-    const missing = notes.filter(n => !n.reason.trim()).length;
-    $('submit').disabled = !notes.length || missing > 0;
-    $('notes-status').textContent = message || (!notes.length ? 'Click parts of the model to add notes.'
-      : missing ? `${missing} note${missing > 1 ? 's' : ''} still need${missing > 1 ? '' : 's'} a reason.`
-      : `${notes.length} note${notes.length > 1 ? 's' : ''} ready.`);
-  }
-
-  function paintPins() {
-    const box = $('labels');
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    while (box.children.length > notes.length) box.lastChild.remove();
-    notes.forEach((n, i) => {
-      let el = box.children[i];
-      if (!el) { el = document.createElement('span'); box.append(el); }
-      el.textContent = i + 1;
-      const p = n.point.clone().project(camera);
-      el.style.left = ((p.x + 1) / 2) * w + 'px';
-      el.style.top = ((1 - p.y) / 2) * h + 'px';
-      el.hidden = p.z > 1;
-    });
-  }
-
-  let comments = null;
-  async function submitNotes() {
-    $('submit').disabled = true;
-    const at = shown ? `frame ${shown.seq + 1}, step "${shown.label}"` : 'the model';
-    const lines = notes.map((n, i) => `${i + 1}. ${n.name}: ${n.reason.trim()}`);
-    const text = `Notes from the Blender Live feed (${at}):\n${lines.join('\n')}`.slice(0, 3900);
-    try {
-      comments = comments || await claude.use('comments');
-      if (!comments) throw { code: 'unavailable' };
-      const anchor = await comments.anchorFor(canvas);
-      let can = 'off';
-      try { can = await comments.canSendToClaude(); } catch {}
-      if (can === 'available') await comments.sendToClaude({ anchor, text });
-      else await comments.create({ anchor, text });
-      notes = [];
-      renderNotes();
-      updateSubmit(can === 'available' ? 'Sent to Claude. Its reply shows up in the chat.' : 'Saved as a comment. Tell Claude in chat to read your notes.');
-    } catch (err) {
-      const code = err && err.code;
-      updateSubmit(code === 'rate_limited' ? 'Too many sends in a row. Wait a moment, then submit again.'
-        : code === 'consent_required' ? 'Allow comments for this page when asked, then submit again.'
-        : 'Could not send. Copy your notes into the chat instead.');
-    }
-  }
-
-  // ---------- chat feed: what Claude says while it works ----------
-  let chatOpen = store.get('chatOpen', false), chatSeen = store.get('chatSeen', 0), chatLatest = 0;
-  function setChat(open) {
-    chatOpen = open;
-    store.set('chatOpen', open);
-    $('chat').hidden = !open || noting;
-    $('chat-toggle').setAttribute('aria-pressed', String(open && !noting));
-    if (open) { chatSeen = chatLatest; store.set('chatSeen', chatSeen); }
-    $('unread').hidden = open || chatLatest <= chatSeen;
-  }
-  function renderChat(msgs) {
-    const body = $('chat-body');
-    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
-    body.textContent = '';
-    if (!msgs.length) {
-      const p = document.createElement('p'); p.className = 'hint';
-      p.textContent = "Claude's notes about what it's building show up here.";
-      body.append(p);
-    }
-    for (const m of msgs) {
-      const div = document.createElement('div'); div.className = 'msg';
-      const who = document.createElement('span'); who.className = 'who'; who.textContent = 'Claude';
-      if (m.at) {
-        const t = document.createElement('time'); t.dateTime = m.at;
-        t.textContent = new Date(m.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        who.append(t);
-      }
-      const p = document.createElement('p'); p.textContent = String(m.text || '');
-      div.append(who, p);
-      body.append(div);
-    }
-    if (atBottom) body.scrollTop = body.scrollHeight;
-    chatLatest = msgs.length ? msgs[msgs.length - 1].seq : 0;
-    setChat(chatOpen);
-  }
-
-  // ---------- render loop ----------
-  function loop(now) {
-    play(now);
-    animateParts(now);
-    followCamera();
-    controls.update();
-    renderer.render(scene, camera);
-    if (notes.length) paintPins(); else if ($('labels').children.length) $('labels').textContent = '';
-    requestAnimationFrame(loop);
-  }
-  resize();
-  applySpin();
+  if (atBottom) body.scrollTop = body.scrollHeight;
+  chatLatest = msgs.length ? msgs[msgs.length - 1].seq : 0;
   setChat(chatOpen);
-  renderNotes();
+}
+
+// ================================================================ render loop
+function loop(now) {
+  play(now);
+  animatePreview(now);
+  followCamera();
+  controls.update();
+  if (prefs.best) composer.render(); else renderer.render(scene, camera);
+  if (notes.length) paintPins(); else if ($('labels').children.length) $('labels').textContent = '';
   requestAnimationFrame(loop);
+}
+resize();
+applyPrefs();
+setChat(chatOpen);
+renderNotes();
+requestAnimationFrame(loop);
 
-  // ---------- controls ----------
-  $('pause').addEventListener('click', () => { paused = !paused; if (!paused && noting) setNoting(false); paintStatus(); });
-  $('replay').addEventListener('click', () => {
-    if (!all.length) return;
-    if (noting) setNoting(false);
-    paused = false; queue = all.slice(); shown = null; shownAt = 0; clearModel(); paintStatus();
-  });
-  $('latest').addEventListener('click', () => {
-    if (!all.length) return;
-    queue = []; const last = all[all.length - 1];
-    showFrame(last, null); shown = last; paintStatus();
-  });
-  $('spin').addEventListener('click', () => { spin.on = !spin.on; applySpin(); });
-  $('dir').addEventListener('click', () => { spin.dir = -spin.dir; applySpin(); });
-  $('speed').addEventListener('input', e => { spin.speed = Number(e.target.value); spin.on = true; applySpin(); });
-  $('wire').addEventListener('click', e => {
-    isWire = !isWire;
-    e.currentTarget.setAttribute('aria-pressed', String(isWire));
-    for (const p of parts) p.wire.visible = isWire;
-  });
-  $('chat-toggle').addEventListener('click', () => { if (noting) setNoting(false); setChat(!chatOpen || $('chat').hidden); });
-  $('chat-close').addEventListener('click', () => setChat(false));
-  $('note-toggle').addEventListener('click', () => setNoting(!noting));
-  $('notes-close').addEventListener('click', () => setNoting(false));
-  $('submit').addEventListener('click', submitNotes);
+// ================================================================ controls
+$('pause').addEventListener('click', () => { paused = !paused; if (!paused && noting) setNoting(false); paintStatus(); });
+$('replay').addEventListener('click', () => {
+  if (!all.length) return;
+  if (noting) setNoting(false);
+  paused = false; replaying = true; queue = all.slice(); shown = null; shownAt = 0;
+  for (const rec of meshes.values()) dropMesh(rec);
+  meshes = new Map(); paintStatus();
+});
+$('latest').addEventListener('click', () => {
+  if (!all.length) return;
+  queue = []; replaying = false; shown = null;
+  playFrame(all[all.length - 1]); paintStatus();
+});
+$('spin').addEventListener('click', () => { prefs.spinOn = !prefs.spinOn; applyPrefs(); });
+$('dir').addEventListener('click', () => { prefs.spinDir = -prefs.spinDir; applyPrefs(); });
+$('speed').addEventListener('input', e => { prefs.spinSpeed = Number(e.target.value); prefs.spinOn = true; applyPrefs(); });
+$('real').addEventListener('click', () => { prefs.real = !prefs.real; applyPrefs(); });
+$('quality').addEventListener('click', () => { prefs.best = !prefs.best; applyPrefs(); });
+$('sky').addEventListener('click', () => { prefs.sky = !prefs.sky; applyPrefs(); });
+$('wire').addEventListener('click', () => { prefs.wire = !prefs.wire; applyPrefs(); });
+$('chat-toggle').addEventListener('click', () => { if (noting) setNoting(false); setChat(!chatOpen || $('chat').hidden); });
+$('chat-close').addEventListener('click', () => setChat(false));
+$('note-toggle').addEventListener('click', () => setNoting(!noting));
+$('notes-close').addEventListener('click', () => setNoting(false));
+$('submit').addEventListener('click', submitNotes);
+$('render-open').addEventListener('click', () => {
+  const r = shown && renders.get(shown.step);
+  if (!r) return;
+  $('render-img').src = r.url;
+  $('render-title').textContent = `Cycles render · step ${r.step}`;
+  $('render-info').textContent = [r.samples && `${r.samples} samples`, r.size, r.time].filter(Boolean).join(' · ');
+  $('render').hidden = false;
+});
+$('render-close').addEventListener('click', () => { $('render').hidden = true; });
 
-  // ---------- database: the run, its frames, and the chat ----------
-  async function connect() {
-    const db = await claude.use('db');
-    if (!db) {
-      $('empty').querySelector('p').innerHTML = '<strong>The live feed needs claude.ai</strong>Open this page in claude.ai while signed in to see Claude model in real time.';
-      return;
-    }
-    db.collection('chat').orderBy('seq', 'desc').limit(60).onSnapshot(
-      qs => renderChat(qs.docs.map(d => d.data()).sort((a, b) => a.seq - b.seq)),
-      () => {},
-    );
-    let stopFrames = null, run = null, first = true;
-    db.doc('live/status').onSnapshot(snap => {
-      const next = snap.exists ? snap.data().run : null;
-      if (next === run) return;
-      const isNewWhileWatching = run !== null;  // a new model started while the page is open: play it from its first frame
-      run = next;
-      if (stopFrames) stopFrames();
-      all = []; queue = []; shown = null; first = !isNewWhileWatching; clearModel(); paintStatus();
-      if (!run) return;
-      stopFrames = db.collection('frames').where('run', '==', run).onSnapshot(qs => {
-        const docs = qs.docs.map(d => d.data()).sort((a, b) => a.seq - b.seq);
-        const known = new Set(all.map(f => f.seq));
-        const added = docs.filter(f => !known.has(f.seq));
-        all = docs;
-        if (first) {
-          // joined late: show where the model is now, Replay plays it from the start
-          first = false;
-          const last = all[all.length - 1];
-          if (last) { showFrame(last, null); shown = last; }
-        } else if (added.length) {
-          queue.push(...added);
-          lastArrival = performance.now();
-        }
-        paintStatus();
-      }, err => { $('label').textContent = 'Feed stopped: ' + err.code; });
-    }, err => { $('label').textContent = 'Feed stopped: ' + err.code; });
+// ================================================================ database
+let db = null;
+async function report(text) {   // problems the viewer hits, so Claude can read them back
+  console.warn(text);
+  try { if (db) await db.doc('diag/last').set({ at: new Date().toISOString(), text: String(text).slice(0, 2000) }); } catch {}
+}
+async function connect() {
+  db = await claude.use('db');
+  if (!db) {
+    $('empty').querySelector('p').innerHTML = '<strong>The live feed needs claude.ai</strong>Open this page in claude.ai while signed in to see Claude model in real time.';
+    return;
   }
-  connect();
-})();
+  db.collection('chat').orderBy('seq', 'desc').limit(60).onSnapshot(qs => renderChat(qs.docs.map(d => d.data()).sort((a, b) => a.seq - b.seq)), () => {});
+  let subs = [], run = null, first = true;
+  db.doc('live/status').onSnapshot(snap => {
+    const next = snap.exists ? snap.data().run : null;
+    if (next === run) return;
+    const isNewWhileWatching = run !== null;  // a new model started while the page is open: play it from its first frame
+    run = next;
+    subs.forEach(u => u()); subs = [];
+    all = []; queue = []; shown = null; first = !isNewWhileWatching; replaying = false;
+    for (const rec of meshes.values()) dropMesh(rec);
+    meshes = new Map(); manifests.clear(); renders.clear(); realStep = null; realRoot.clear();
+    paintStatus();
+    if (!run) return;
+    const connectedAt = performance.now();
+    const byRun = name => db.collection(name).where('run', '==', run);
+    subs.push(byRun('files').onSnapshot(qs => { for (const d of qs.docs) { const x = d.data(); fileUrls.set(x.key, x.urls); } paintStatus(); loadSky(skyDoc); }, () => {}));
+    subs.push(byRun('gltf').onSnapshot(qs => { for (const d of qs.docs) { const x = d.data(); manifests.set(x.step, x); } paintStatus(); }, () => {}));
+    subs.push(byRun('sky').onSnapshot(qs => { const docs = qs.docs.map(d => d.data()).sort((a, b) => a.step - b.step); skyDoc = docs[docs.length - 1] || null; loadSky(skyDoc); }, () => {}));
+    subs.push(byRun('renders').onSnapshot(qs => { for (const d of qs.docs) { const x = d.data(); renders.set(x.step, x); } paintStatus(); }, () => {}));
+    const ingest = docs => {   // new frames: play them, or on first load jump to the latest
+      const have = new Map(all.map(f => [f.seq, f]));
+      const added = docs.filter(f => !have.has(f.seq));
+      if (!added.length) return;
+      for (const f of added) have.set(f.seq, f);
+      all = [...have.values()].sort((a, b) => a.seq - b.seq);
+      // what was already there when the page opened: jump to the end, Replay plays it all
+      if (first && performance.now() - connectedAt < 8000) {
+        const last = all[all.length - 1];
+        if (last) playFrame(last);
+      } else {
+        queue.push(...added.sort((a, b) => a.seq - b.seq));
+        lastArrival = performance.now();
+      }
+      paintStatus();
+    };
+    // frames packed per step in the file store (big models), or one document each (small ones)
+    const sets = new Map(), loadedSets = new Set();
+    const loadSets = async () => {
+      for (const [step, doc] of [...sets].sort((a, b) => a[0] - b[0])) {
+        if (loadedSets.has(step) || !fileUrls.has(doc.key)) continue;
+        loadedSets.add(step);
+        try {
+          showLoading(`Loading step ${step}...`);
+          const buf = await fetchPacked(doc.key, fileUrls.get(doc.key));
+          ingest(JSON.parse(new TextDecoder().decode(buf)));
+        } catch (err) { loadedSets.delete(step); report('frames step ' + step + ': ' + (err && err.message || err)); }
+        finally { hideLoading(); }
+      }
+    };
+    subs.push(byRun('framesets').onSnapshot(qs => { for (const d of qs.docs) { const x = d.data(); sets.set(x.step, x); } loadSets(); }, () => {}));
+    subs.push(byRun('files').onSnapshot(() => loadSets(), () => {}));
+    subs.push(byRun('frames').onSnapshot(qs => ingest(qs.docs.map(d => d.data())),
+      err => { $('label').textContent = 'Feed stopped: ' + err.code; }));
+  }, err => { $('label').textContent = 'Feed stopped: ' + err.code; });
+}
+connect();
 </script>
